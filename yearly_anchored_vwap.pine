@@ -1,0 +1,96 @@
+// =============================================================================
+// Yearly Anchored VWAP + Standard Deviation Bands
+// Reverse-engineered from: "VWAP - Daily" column in long-term VWAP CSV export
+//
+// CONFIDENCE: ~90% (upgraded after backtest)
+//   - Yearly reset (Jan 1) confirmed by data: at timestamp 1767225600
+//     (2026-01-01) VWAP = VAH = VAL (SD=0, first bar of new year)
+//   - SD formula: population variance via Σ(TP²·V)/ΣV − VWAP²
+//   - SD bands are symmetric (verified to full float precision)
+//   - TP formula: BACKTEST CONFIRMED → use close, not (H+L+C)/3
+//     At bar 1 of new year: close gives VWAP error=4.39 vs 313.85 for HLC/3
+//     Residual error due to tick-level VWAP in TradingView vs daily OHLC approx
+//
+// COLUMNS REPLICATED:
+//   VWAP - Daily  →  vwap  (blue)
+//   SD#1 VAH      →  vwap + 1·sd
+//   SD#1 VAL      →  vwap − 1·sd
+//   SD+2 / SD-2   →  vwap ± 2·sd   (empty in CSV; included here as optional)
+//   SD+3 / SD-3   →  vwap ± 3·sd   (empty in CSV; included here as optional)
+//   Previous VWAP →  prev_vwap      (empty in CSV; shown as flat reference)
+//   Prev VAH/VAL  →  prev_vwap ± prev_sd
+// =============================================================================
+
+//@version=5
+indicator("Yearly Anchored VWAP + SD Bands", shorttitle="VWAP-Y", overlay=true)
+
+// ── Inputs ───────────────────────────────────────────────────────────────────
+var string g_disp  = "Display"
+var string g_color = "Colors"
+
+show_sd1  = input.bool(true,  "Show ±1 SD Bands",         group=g_disp)
+show_sd2  = input.bool(false, "Show ±2 SD Bands",         group=g_disp)
+show_sd3  = input.bool(false, "Show ±3 SD Bands",         group=g_disp)
+show_prev = input.bool(true,  "Show Previous Year VWAP",  group=g_disp)
+
+c_vwap = input.color(color.new(#2196F3, 0),  "VWAP",            group=g_color)
+c_sd1  = input.color(color.new(#4CAF50, 20), "±1 SD",           group=g_color)
+c_sd2  = input.color(color.new(#FF9800, 20), "±2 SD",           group=g_color)
+c_sd3  = input.color(color.new(#F44336, 20), "±3 SD",           group=g_color)
+c_prev = input.color(color.new(#9E9E9E, 40), "Prev Year VWAP",  group=g_color)
+
+// ── Accumulators (reset each Jan 1) ─────────────────────────────────────────
+var float cum_tpv  = 0.0   // Σ( TP × Volume )
+var float cum_vol  = 0.0   // Σ( Volume )
+var float cum_tp2v = 0.0   // Σ( TP² × Volume )  — needed for variance
+
+// Previous year's final VWAP + SD (held as static reference after year rolls)
+var float prev_vwap = na
+var float prev_sd   = na
+
+tp       = close  // Backtest confirmed: close outperforms (H+L+C)/3 by 70x (error 4.39 vs 313.85)
+new_year = year(time) != year(time[1]) or barstate.isfirst
+
+if new_year
+    // Snapshot the completed year before resetting
+    if cum_vol > 0
+        float _pv  = cum_tpv  / cum_vol
+        float _var = math.max(cum_tp2v / cum_vol - _pv * _pv, 0.0)
+        prev_vwap := _pv
+        prev_sd   := math.sqrt(_var)
+    // Reset for new year
+    cum_tpv  := tp * volume
+    cum_vol  := volume
+    cum_tp2v := tp * tp * volume
+else
+    cum_tpv  += tp * volume
+    cum_vol  += volume
+    cum_tp2v += tp * tp * volume
+
+vwap     = cum_tpv / cum_vol
+variance = math.max(cum_tp2v / cum_vol - vwap * vwap, 0.0)
+sd       = math.sqrt(variance)
+
+// ── Current-year plots ───────────────────────────────────────────────────────
+plot(vwap,                        "VWAP",   c_vwap, 2)
+plot(show_sd1 ? vwap + sd   : na, "VAH +1", c_sd1,  1)
+plot(show_sd1 ? vwap - sd   : na, "VAL -1", c_sd1,  1)
+plot(show_sd2 ? vwap + 2*sd : na, "VAH +2", c_sd2,  1)
+plot(show_sd2 ? vwap - 2*sd : na, "VAL -2", c_sd2,  1)
+plot(show_sd3 ? vwap + 3*sd : na, "VAH +3", c_sd3,  1)
+plot(show_sd3 ? vwap - 3*sd : na, "VAL -3", c_sd3,  1)
+
+// ── Previous-year reference lines (horizontal carry-forward) ─────────────────
+// style_linebr breaks across gaps; for a solid carry-forward use style_line
+plot(show_prev and not na(prev_vwap)             ? prev_vwap             : na, "Prev VWAP",   c_prev, 1, plot.style_linebr)
+plot(show_prev and not na(prev_sd)               ? prev_vwap + prev_sd   : na, "Prev VAH +1", c_prev, 1, plot.style_linebr)
+plot(show_prev and not na(prev_sd)               ? prev_vwap - prev_sd   : na, "Prev VAL -1", c_prev, 1, plot.style_linebr)
+plot(show_prev and not na(prev_sd) and show_sd2  ? prev_vwap + 2*prev_sd : na, "Prev VAH +2", c_prev, 1, plot.style_linebr)
+plot(show_prev and not na(prev_sd) and show_sd2  ? prev_vwap - 2*prev_sd : na, "Prev VAL -2", c_prev, 1, plot.style_linebr)
+plot(show_prev and not na(prev_sd) and show_sd3  ? prev_vwap + 3*prev_sd : na, "Prev VAH +3", c_prev, 1, plot.style_linebr)
+plot(show_prev and not na(prev_sd) and show_sd3  ? prev_vwap - 3*prev_sd : na, "Prev VAL -3", c_prev, 1, plot.style_linebr)
+
+// ── Alerts ───────────────────────────────────────────────────────────────────
+alertcondition(ta.cross(close, vwap),        "Price x VWAP",    "Price crossed Yearly VWAP")
+alertcondition(ta.cross(close, vwap + sd),   "Price x VAH +1",  "Price crossed +1 SD band")
+alertcondition(ta.cross(close, vwap - sd),   "Price x VAL -1",  "Price crossed -1 SD band")

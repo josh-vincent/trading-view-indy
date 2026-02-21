@@ -1,0 +1,80 @@
+// =============================================================================
+// BTC Historical High Volume Nodes (POC Levels)
+// Reverse-engineered from: highVolPOC1-10 and highVolPOCd1-10 columns
+//
+// CONFIDENCE: ~95% for static levels (directly read from CSV data)
+//             ~55% for dynamic levels (require full volume profile data)
+//
+// COLUMNS REPLICATED:
+//   highVolPOC1  = 3439.2   (constant throughout all data)
+//   highVolPOC2  = 12220    (constant)
+//   highVolPOC3  = 18198    (constant)
+//   highVolPOC4  = 22306    (constant)
+//   highVolPOC5  = 27834    (constant)
+//   highVolPOC6  = 30774    (constant)
+//   highVolPOC7  = 74388    (constant until late in dataset)
+//   highVolPOC8  = dynamic  (appears/disappears: 106805, 116928, 120255, 121523)
+//   highVolPOCd1 = 4888.4   (constant throughout)
+//   highVolPOCd5 = 121523   (persistent in second half of data)
+//   highVolPOCd6 = 78251    (appears during BTC correction)
+//   highVolPOCd7 = 76209    (appears during correction)
+//   highVolPOCd8 = 68690    (briefly appears)
+//
+// NOTES:
+//   These are historical "High Volume Nodes" — price levels where a large
+//   cumulative volume has traded over BTC's entire history. They act as
+//   strong support/resistance. Static levels can be hardcoded. Dynamic levels
+//   (like 106805, 116928) form during high-volume periods and would require
+//   a live volume profile calculation to replicate precisely.
+// =============================================================================
+
+//@version=5
+indicator("BTC Historical High Volume Nodes", shorttitle="BTC-HVN", overlay=true)
+
+// ── Input groups ─────────────────────────────────────────────────────────────
+var string g1 = "Pre-2021 Deep History"
+var string g2 = "2020-2021 Bull Run"
+var string g3 = "2024 Cycle"
+var string g4 = "Dynamic Levels (2025)"
+var string gc = "Colors"
+
+// ── Toggle inputs ────────────────────────────────────────────────────────────
+s_3439   = input.bool(true,  "3,439",   group=g1)
+s_4888   = input.bool(true,  "4,888",   group=g1)
+s_12220  = input.bool(true,  "12,220",  group=g2)
+s_18198  = input.bool(true,  "18,198",  group=g2)
+s_22306  = input.bool(true,  "22,306",  group=g2)
+s_27834  = input.bool(true,  "27,834",  group=g2)
+s_30774  = input.bool(true,  "30,774",  group=g2)
+s_74388  = input.bool(true,  "74,388",  group=g3)
+s_dyn    = input.bool(true,  "Show dynamic 2025 levels",  group=g4)
+
+// ── Colors ───────────────────────────────────────────────────────────────────
+c_deep  = input.color(color.new(#7B1FA2, 30), "Pre-2021",     group=gc)
+c_2021  = input.color(color.new(#3949AB, 30), "2021 Bull",    group=gc)
+c_2024  = input.color(color.new(#E65100, 30), "2024 Cycle",   group=gc)
+c_dyn   = input.color(color.new(#00897B, 30), "Dynamic 2025", group=gc)
+
+// ── Static HVN levels ────────────────────────────────────────────────────────
+plot(s_3439  ? 3439.2  : na, "HVN 3,439",  c_deep, 1, plot.style_circles)
+plot(s_4888  ? 4888.4  : na, "HVN 4,888",  c_deep, 1, plot.style_circles)
+plot(s_12220 ? 12220   : na, "HVN 12,220", c_2021, 1, plot.style_circles)
+plot(s_18198 ? 18198   : na, "HVN 18,198", c_2021, 1, plot.style_circles)
+plot(s_22306 ? 22306   : na, "HVN 22,306", c_2021, 1, plot.style_circles)
+plot(s_27834 ? 27834   : na, "HVN 27,834", c_2021, 1, plot.style_circles)
+plot(s_30774 ? 30774   : na, "HVN 30,774", c_2021, 1, plot.style_circles)
+plot(s_74388 ? 74388   : na, "HVN 74,388", c_2024, 1, plot.style_circles)
+
+// ── Dynamic 2025 levels (hardcoded from CSV observations) ────────────────────
+// These appeared during high-volume trading in 2025.
+// In a live implementation these would be calculated via rolling volume profile.
+plot(s_dyn ? 106805 : na, "HVN 106,805", c_dyn, 1, plot.style_circles)
+plot(s_dyn ? 116928 : na, "HVN 116,928", c_dyn, 1, plot.style_circles)
+plot(s_dyn ? 120255 : na, "HVN 120,255", c_dyn, 1, plot.style_circles)
+plot(s_dyn ? 121523 : na, "HVN 121,523", c_dyn, 1, plot.style_circles)
+plot(s_dyn ? 105337 : na, "HVN 105,337", c_dyn, 1, plot.style_circles)
+plot(s_dyn ? 115655 : na, "HVN 115,655", c_dyn, 1, plot.style_circles)
+plot(s_dyn ? 78251  : na, "HVN 78,251",  c_dyn, 1, plot.style_circles)
+plot(s_dyn ? 76209  : na, "HVN 76,209",  c_dyn, 1, plot.style_circles)
+plot(s_dyn ? 68690  : na, "HVN 68,690",  c_dyn, 1, plot.style_circles)
+plot(s_dyn ? 64896  : na, "HVN 64,896",  c_dyn, 1, plot.style_circles)
