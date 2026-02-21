@@ -1,64 +1,86 @@
 // =============================================================================
-// Yearly Anchored VWAP + Standard Deviation Bands
-// Reverse-engineered from: "VWAP - Daily" column in long-term VWAP CSV export
-//
-// CONFIDENCE: ~90% (upgraded after backtest)
-//   - Yearly reset (Jan 1) confirmed by data: at timestamp 1767225600
-//     (2026-01-01) VWAP = VAH = VAL (SD=0, first bar of new year)
-//   - SD formula: population variance via Σ(TP²·V)/ΣV − VWAP²
-//   - SD bands are symmetric (verified to full float precision)
-//   - TP formula: BACKTEST CONFIRMED → use close, not (H+L+C)/3
-//     At bar 1 of new year: close gives VWAP error=4.39 vs 313.85 for HLC/3
-//     Residual error due to tick-level VWAP in TradingView vs daily OHLC approx
-//
-// COLUMNS REPLICATED:
-//   VWAP - Daily  →  vwap  (blue)
-//   SD#1 VAH      →  vwap + 1·sd
-//   SD#1 VAL      →  vwap − 1·sd
-//   SD+2 / SD-2   →  vwap ± 2·sd   (empty in CSV; included here as optional)
-//   SD+3 / SD-3   →  vwap ± 3·sd   (empty in CSV; included here as optional)
-//   Previous VWAP →  prev_vwap      (empty in CSV; shown as flat reference)
-//   Prev VAH/VAL  →  prev_vwap ± prev_sd
+// Anchored VWAP + Value Areas
+// Supports: Yearly / Quarterly / Monthly / Weekly + Auto timeframe selection
+// Pine Script v6
 // =============================================================================
+//@version=6
+indicator("Anchored VWAP + Value Areas", shorttitle = "VWAP-VA", overlay = true, max_lines_count = 20, max_labels_count = 10)
 
-//@version=5
-indicator("Yearly Anchored VWAP + SD Bands", shorttitle="VWAP-Y", overlay=true)
+// Input groups
+string G_TF   = "Timeframe"
+string G_DISP = "Display"
+string G_CD   = "Colours - Developing Period"
+string G_CP   = "Colours - Previous Period"
 
-// ── Inputs ───────────────────────────────────────────────────────────────────
-var string g_disp  = "Display"
-var string g_color = "Colors"
+// Timeframe selector
+tf_mode = input.string("Auto", "Timeframe", options = ["Auto", "Yearly", "Quarterly", "Monthly", "Weekly"], group = G_TF)
 
-show_sd1  = input.bool(true,  "Show ±1 SD Bands",         group=g_disp)
-show_sd2  = input.bool(false, "Show ±2 SD Bands",         group=g_disp)
-show_sd3  = input.bool(false, "Show ±3 SD Bands",         group=g_disp)
-show_prev = input.bool(true,  "Show Previous Year VWAP",  group=g_disp)
+// Display toggles
+show_va     = input.bool(true,  "Show Value Area (+-1 SD)",  group = G_DISP)
+show_prev   = input.bool(true,  "Show Previous Period",       group = G_DISP)
+show_fill   = input.bool(true,  "Show Value Area Shading",    group = G_DISP)
+show_labels = input.bool(true,  "Show Labels",                group = G_DISP)
+show_sd2    = input.bool(false, "Show +-2 SD Bands",         group = G_DISP)
+show_sd3    = input.bool(false, "Show +-3 SD Bands",         group = G_DISP)
 
-c_vwap = input.color(color.new(#2196F3, 0),  "VWAP",            group=g_color)
-c_sd1  = input.color(color.new(#4CAF50, 20), "±1 SD",           group=g_color)
-c_sd2  = input.color(color.new(#FF9800, 20), "±2 SD",           group=g_color)
-c_sd3  = input.color(color.new(#F44336, 20), "±3 SD",           group=g_color)
-c_prev = input.color(color.new(#9E9E9E, 40), "Prev Year VWAP",  group=g_color)
+// Developing period colours
+c_vwap  = input.color(color.new(#2196F3, 0),  "VWAP",             group = G_CD)
+c_vah   = input.color(color.new(#4CAF50, 0),  "VAH",              group = G_CD)
+c_val   = input.color(color.new(#4CAF50, 0),  "VAL",              group = G_CD)
+c_sd2   = input.color(color.new(#FF9800, 0),  "+-2 SD",           group = G_CD)
+c_sd3   = input.color(color.new(#F44336, 0),  "+-3 SD",           group = G_CD)
+c_fill  = input.color(color.new(#4CAF50, 85), "Value Area Fill",  group = G_CD)
+c_lbg   = input.color(color.new(#1E1E1E, 10), "Label Background", group = G_CD)
+c_ltxt  = input.color(color.new(#FFFFFF, 0),  "Label Text",       group = G_CD)
 
-// ── Accumulators (reset each Jan 1) ─────────────────────────────────────────
-var float cum_tpv  = 0.0   // Σ( TP × Volume )
-var float cum_vol  = 0.0   // Σ( Volume )
-var float cum_tp2v = 0.0   // Σ( TP² × Volume )  — needed for variance
+// Previous period colours
+c_pvwap = input.color(color.new(#9E9E9E, 0),  "Prev VWAP",       group = G_CP)
+c_pvah  = input.color(color.new(#78909C, 0),  "Prev VAH",        group = G_CP)
+c_pval  = input.color(color.new(#78909C, 0),  "Prev VAL",        group = G_CP)
+c_pfill = input.color(color.new(#9E9E9E, 85), "Prev Area Fill",  group = G_CP)
+c_plbg  = input.color(color.new(#1E1E1E, 10), "Prev Label BG",   group = G_CP)
+c_pltxt = input.color(color.new(#9E9E9E, 0),  "Prev Label Text", group = G_CP)
 
-// Previous year's final VWAP + SD (held as static reference after year rolls)
+// Auto timeframe logic
+// Daily (86400s) or higher  -> Yearly
+// Above 4H (14400s) to <1D  -> Quarterly
+// 1H (3600s) to 4H          -> Monthly
+// Below 1H                  -> Weekly
+int tf_secs = timeframe.in_seconds
+
+string eff_mode = switch tf_mode
+    "Auto" => tf_secs >= 86400 ? "Yearly" : tf_secs > 14400 ? "Quarterly" : tf_secs >= 3600 ? "Monthly" : "Weekly"
+    => tf_mode
+
+// Quarter helper (integer arithmetic, no float division needed)
+int q_curr = month(time)    > 9 ? 4 : month(time)    > 6 ? 3 : month(time)    > 3 ? 2 : 1
+int q_prev = month(time[1]) > 9 ? 4 : month(time[1]) > 6 ? 3 : month(time[1]) > 3 ? 2 : 1
+
+// Period change detection
+bool raw_change = switch eff_mode
+    "Yearly"    => year(time) != year(time[1])
+    "Quarterly" => year(time) != year(time[1]) or q_curr != q_prev
+    "Monthly"   => year(time) != year(time[1]) or month(time) != month(time[1])
+    "Weekly"    => weekofyear(time) != weekofyear(time[1]) or year(time) != year(time[1])
+    => false
+
+bool new_period = barstate.isfirst or raw_change
+
+// VWAP accumulators
+var float cum_tpv  = 0.0
+var float cum_vol  = 0.0
+var float cum_tp2v = 0.0
 var float prev_vwap = na
 var float prev_sd   = na
 
-tp       = close  // Backtest confirmed: close outperforms (H+L+C)/3 by 70x (error 4.39 vs 313.85)
-new_year = year(time) != year(time[1]) or barstate.isfirst
+float tp = close
 
-if new_year
-    // Snapshot the completed year before resetting
+if new_period
     if cum_vol > 0
-        float _pv  = cum_tpv  / cum_vol
-        float _var = math.max(cum_tp2v / cum_vol - _pv * _pv, 0.0)
-        prev_vwap := _pv
-        prev_sd   := math.sqrt(_var)
-    // Reset for new year
+        float pv   = cum_tpv / cum_vol
+        float pvar = math.max(cum_tp2v / cum_vol - pv * pv, 0.0)
+        prev_vwap := pv
+        prev_sd   := math.sqrt(pvar)
     cum_tpv  := tp * volume
     cum_vol  := volume
     cum_tp2v := tp * tp * volume
@@ -67,30 +89,123 @@ else
     cum_vol  += volume
     cum_tp2v += tp * tp * volume
 
-vwap     = cum_tpv / cum_vol
-variance = math.max(cum_tp2v / cum_vol - vwap * vwap, 0.0)
-sd       = math.sqrt(variance)
+float vwap     = cum_tpv / cum_vol
+float variance = math.max(cum_tp2v / cum_vol - vwap * vwap, 0.0)
+float sd       = math.sqrt(variance)
+float vah      = vwap + sd
+float vwap_val = vwap - sd
 
-// ── Current-year plots ───────────────────────────────────────────────────────
-plot(vwap,                        "VWAP",   c_vwap, 2)
-plot(show_sd1 ? vwap + sd   : na, "VAH +1", c_sd1,  1)
-plot(show_sd1 ? vwap - sd   : na, "VAL -1", c_sd1,  1)
-plot(show_sd2 ? vwap + 2*sd : na, "VAH +2", c_sd2,  1)
-plot(show_sd2 ? vwap - 2*sd : na, "VAL -2", c_sd2,  1)
-plot(show_sd3 ? vwap + 3*sd : na, "VAH +3", c_sd3,  1)
-plot(show_sd3 ? vwap - 3*sd : na, "VAL -3", c_sd3,  1)
+// Previous period computed values
+float pv_vwap = show_prev and not na(prev_vwap) ? prev_vwap : na
+float pv_vah  = show_prev and show_va and not na(prev_sd) ? prev_vwap + prev_sd : na
+float pv_val  = show_prev and show_va and not na(prev_sd) ? prev_vwap - prev_sd : na
 
-// ── Previous-year reference lines (horizontal carry-forward) ─────────────────
-// style_linebr breaks across gaps; for a solid carry-forward use style_line
-plot(show_prev and not na(prev_vwap)             ? prev_vwap             : na, "Prev VWAP",   c_prev, 1, plot.style_linebr)
-plot(show_prev and not na(prev_sd)               ? prev_vwap + prev_sd   : na, "Prev VAH +1", c_prev, 1, plot.style_linebr)
-plot(show_prev and not na(prev_sd)               ? prev_vwap - prev_sd   : na, "Prev VAL -1", c_prev, 1, plot.style_linebr)
-plot(show_prev and not na(prev_sd) and show_sd2  ? prev_vwap + 2*prev_sd : na, "Prev VAH +2", c_prev, 1, plot.style_linebr)
-plot(show_prev and not na(prev_sd) and show_sd2  ? prev_vwap - 2*prev_sd : na, "Prev VAL -2", c_prev, 1, plot.style_linebr)
-plot(show_prev and not na(prev_sd) and show_sd3  ? prev_vwap + 3*prev_sd : na, "Prev VAH +3", c_prev, 1, plot.style_linebr)
-plot(show_prev and not na(prev_sd) and show_sd3  ? prev_vwap - 3*prev_sd : na, "Prev VAL -3", c_prev, 1, plot.style_linebr)
+// Plots - developing period
+plot(vwap, "VWAP", c_vwap, 2)
+p_vah = plot(show_va ? vah      : na, "VAH", c_vah, 1)
+p_val = plot(show_va ? vwap_val : na, "VAL", c_val, 1)
+fill(p_vah, p_val, show_fill and show_va ? c_fill : na)
 
-// ── Alerts ───────────────────────────────────────────────────────────────────
-alertcondition(ta.cross(close, vwap),        "Price x VWAP",    "Price crossed Yearly VWAP")
-alertcondition(ta.cross(close, vwap + sd),   "Price x VAH +1",  "Price crossed +1 SD band")
-alertcondition(ta.cross(close, vwap - sd),   "Price x VAL -1",  "Price crossed -1 SD band")
+plot(show_sd2 ? vwap + 2 * sd : na, "SD2+", c_sd2, 1)
+plot(show_sd2 ? vwap - 2 * sd : na, "SD2-", c_sd2, 1)
+plot(show_sd3 ? vwap + 3 * sd : na, "SD3+", c_sd3, 1)
+plot(show_sd3 ? vwap - 3 * sd : na, "SD3-", c_sd3, 1)
+
+// Plots - previous period
+plot(pv_vwap, "Prev VWAP", c_pvwap, 1, plot.style_linebr)
+p_pvah = plot(pv_vah, "Prev VAH", c_pvah, 1, plot.style_linebr)
+p_pval = plot(pv_val, "Prev VAL", c_pval, 1, plot.style_linebr)
+fill(p_pvah, p_pval, show_prev and show_fill and show_va and not na(prev_sd) ? c_pfill : na)
+
+plot(show_prev and show_sd2 and not na(prev_sd) ? prev_vwap + 2 * prev_sd : na, "Prev SD2+", c_pvah, 1, plot.style_linebr)
+plot(show_prev and show_sd2 and not na(prev_sd) ? prev_vwap - 2 * prev_sd : na, "Prev SD2-", c_pval, 1, plot.style_linebr)
+plot(show_prev and show_sd3 and not na(prev_sd) ? prev_vwap + 3 * prev_sd : na, "Prev SD3+", c_pvah, 1, plot.style_linebr)
+plot(show_prev and show_sd3 and not na(prev_sd) ? prev_vwap - 3 * prev_sd : na, "Prev SD3-", c_pval, 1, plot.style_linebr)
+
+// Extension lines for developing period (dashed, extend to RHS edge)
+// On each bar the line endpoint is moved to the current bar so it stays
+// at the current VWAP/VAH/VAL level and projects horizontally to the right.
+var line ext_vwap = na
+var line ext_vah  = na
+var line ext_val  = na
+
+if new_period
+    line.delete(ext_vwap)
+    line.delete(ext_vah)
+    line.delete(ext_val)
+    ext_vwap := line.new(bar_index, vwap,      bar_index + 1, vwap,
+         extend = extend.right, color = c_vwap, width = 1, style = line.style_dashed)
+    ext_vah  := line.new(bar_index, vah,       bar_index + 1, vah,
+         extend = extend.right, color = c_vah,  width = 1, style = line.style_dashed)
+    ext_val  := line.new(bar_index, vwap_val,  bar_index + 1, vwap_val,
+         extend = extend.right, color = c_val,  width = 1, style = line.style_dashed)
+else
+    if not na(ext_vwap)
+        line.set_x1(ext_vwap, bar_index)
+        line.set_x2(ext_vwap, bar_index + 1)
+        line.set_y1(ext_vwap, vwap)
+        line.set_y2(ext_vwap, vwap)
+    color ext_vah_col = show_va ? c_vah : color.new(c_vah, 100)
+    color ext_val_col = show_va ? c_val : color.new(c_val, 100)
+    if not na(ext_vah)
+        line.set_x1(ext_vah, bar_index)
+        line.set_x2(ext_vah, bar_index + 1)
+        line.set_y1(ext_vah, vah)
+        line.set_y2(ext_vah, vah)
+        line.set_color(ext_vah, ext_vah_col)
+        line.set_x1(ext_val, bar_index)
+        line.set_x2(ext_val, bar_index + 1)
+        line.set_y1(ext_val, vwap_val)
+        line.set_y2(ext_val, vwap_val)
+        line.set_color(ext_val, ext_val_col)
+
+// Labels at 30% in from RHS of visible screen
+var label lbl_vwap  = na
+var label lbl_vah   = na
+var label lbl_val   = na
+var label lbl_pvwap = na
+var label lbl_pvah  = na
+var label lbl_pval  = na
+
+if barstate.islast or barstate.isrealtime
+    int lx = int(chart.right_visible_bar_time - (chart.right_visible_bar_time - chart.left_visible_bar_time) * 0.30)
+    if show_labels
+        label.delete(lbl_vwap)
+        lbl_vwap := label.new(lx, vwap,
+             "VWAP " + str.tostring(vwap, format.mintick),
+             xloc = xloc.bar_time, style = label.style_label_left,
+             color = c_lbg, textcolor = c_ltxt, size = size.small)
+        if show_va
+            label.delete(lbl_vah)
+            lbl_vah := label.new(lx, vah,
+                 "DVAH " + str.tostring(vah, format.mintick),
+                 xloc = xloc.bar_time, style = label.style_label_left,
+                 color = c_lbg, textcolor = c_ltxt, size = size.small)
+            label.delete(lbl_val)
+            lbl_val := label.new(lx, vwap_val,
+                 "DVAL " + str.tostring(vwap_val, format.mintick),
+                 xloc = xloc.bar_time, style = label.style_label_left,
+                 color = c_lbg, textcolor = c_ltxt, size = size.small)
+        if show_prev and not na(prev_vwap)
+            label.delete(lbl_pvwap)
+            lbl_pvwap := label.new(lx, prev_vwap,
+                 "PVWAP " + str.tostring(prev_vwap, format.mintick),
+                 xloc = xloc.bar_time, style = label.style_label_left,
+                 color = c_plbg, textcolor = c_pltxt, size = size.small)
+            if show_va and not na(prev_sd)
+                label.delete(lbl_pvah)
+                lbl_pvah := label.new(lx, prev_vwap + prev_sd,
+                     "PVAH " + str.tostring(prev_vwap + prev_sd, format.mintick),
+                     xloc = xloc.bar_time, style = label.style_label_left,
+                     color = c_plbg, textcolor = c_pltxt, size = size.small)
+                label.delete(lbl_pval)
+                lbl_pval := label.new(lx, prev_vwap - prev_sd,
+                     "PVAL " + str.tostring(prev_vwap - prev_sd, format.mintick),
+                     xloc = xloc.bar_time, style = label.style_label_left,
+                     color = c_plbg, textcolor = c_pltxt, size = size.small)
+
+// Alerts
+alertcondition(ta.cross(close, vwap),     "Price x VWAP",      "Price crossed VWAP")
+alertcondition(ta.cross(close, vah),      "Price x VAH",       "Price crossed VAH")
+alertcondition(ta.cross(close, vwap_val), "Price x VAL",       "Price crossed VAL")
+alertcondition(not na(prev_vwap) and ta.cross(close, prev_vwap), "Price x Prev VWAP", "Price crossed Previous VWAP")
