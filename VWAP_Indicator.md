@@ -1,3 +1,35 @@
+# Multi-Timeframe Anchored VWAP Indicator
+
+Pine Script v6 indicator for TradingView.
+
+## Features
+
+- **Timeframe Modes**: Yearly, Quarterly, Monthly, Weekly, or Auto
+- **Auto Timeframe Logic**:
+  - Daily and above → Yearly value area
+  - Above 4H up to Daily → Quarterly value area
+  - 1H to 4H → Monthly value area
+  - Below 1H → Weekly value area
+- **Value Area Shading** with configurable colours for developing and previous periods
+- **RHS Extension Lines**: Dashed lines extend the developing VWAP/VAH/VAL to the right edge; reset when the next period begins
+- **Labels**: VWAP, DVAH, DVAL, PVWAP, PVAH, PVAL — each with live price — positioned 30% in from the right side of the visible screen
+- **Optional bands**: ±2 SD and ±3 SD
+- **Colour pickers** for every line and label element
+- **Alerts**: Price crossing VWAP, VAH, VAL, and Previous VWAP
+
+## How to Add to TradingView
+
+1. Open TradingView and navigate to the chart
+2. Click **Pine Editor** at the bottom of the screen
+3. Delete all existing code in the editor
+4. Paste the full script below
+5. Click **Add to chart**
+
+---
+
+## Pine Script
+
+```pine
 // =============================================================================
 // Multi-Timeframe Anchored VWAP with Value Areas
 // Pine Script v6
@@ -202,3 +234,37 @@ alertcondition(ta.cross(close, vwap),        "Price × VWAP",  "Price crossed VW
 alertcondition(ta.cross(close, vwap + sd),   "Price × VAH",   "Price crossed VAH +1 SD")
 alertcondition(ta.cross(close, vwap - sd),   "Price × VAL",   "Price crossed VAL -1 SD")
 alertcondition(ta.cross(close, prev_vwap),   "Price × PVWAP", "Price crossed Previous VWAP")
+```
+
+---
+
+## Settings Reference
+
+| Group | Setting | Default | Description |
+|-------|---------|---------|-------------|
+| Timeframe | Timeframe | Auto | Auto, Yearly, Quarterly, Monthly, or Weekly |
+| Display | Show Value Area | On | Toggle ±1 SD value area bands |
+| Display | Show ±2 SD Bands | Off | Toggle ±2 SD bands |
+| Display | Show ±3 SD Bands | Off | Toggle ±3 SD bands |
+| Display | Show Previous Period | On | Toggle prior period VWAP/VAH/VAL |
+| Display | Show Value Area Shading | On | Toggle fill between VAH and VAL |
+| Display | Extend Developing Lines | On | Toggle dashed RHS extension lines |
+| Display | Show Labels | On | Toggle VWAP/DVAH/DVAL/PVWAP/PVAH/PVAL labels |
+| Colours – Developing | VWAP | Blue | Line colour for current VWAP |
+| Colours – Developing | VAH / VAL | Green | Line colour for current ±1 SD bands |
+| Colours – Developing | ±2 SD | Orange | Line colour for ±2 SD bands |
+| Colours – Developing | ±3 SD | Red | Line colour for ±3 SD bands |
+| Colours – Developing | VA Fill | Green (85% transparent) | Fill colour between VAH and VAL |
+| Colours – Previous | Prev VWAP / VAH / VAL | Grey | Line colours for previous period |
+| Colours – Previous | Prev VA Fill | Grey (85% transparent) | Fill for previous period value area |
+| Colours – Labels | Label Background | Black (70% transparent) | Label box colour |
+| Colours – Labels | Label Text | White | Label text colour |
+
+## Alerts Available
+
+| Alert Name | Triggers When |
+|------------|---------------|
+| Price × VWAP | Price crosses the VWAP line |
+| Price × VAH | Price crosses the upper value area band |
+| Price × VAL | Price crosses the lower value area band |
+| Price × PVWAP | Price crosses the previous period VWAP |
