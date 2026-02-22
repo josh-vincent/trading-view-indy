@@ -17,31 +17,38 @@ use_dynamic  = input.bool(true,  "Auto-detect pair from chart (Dynamic Mode)",
 
 inp_binance  = input.symbol("BINANCE:BTCUSDT",  "Binance",  group=grp_src,
      tooltip="Used only when Dynamic Mode is OFF")
-use_binance  = input.bool(true, "Include", inline="bnb",  group=grp_src)
-
 inp_bybit    = input.symbol("BYBIT:BTCUSDT",    "Bybit",    group=grp_src,
      tooltip="Used only when Dynamic Mode is OFF")
-use_bybit    = input.bool(true, "Include", inline="byb",  group=grp_src)
-
 inp_coinbase = input.symbol("COINBASE:BTCUSD",  "Coinbase", group=grp_src,
      tooltip="Used only when Dynamic Mode is OFF.\nIn Dynamic Mode, Coinbase quote currency is auto-converted (USDT → USD)")
-use_coinbase = input.bool(true, "Include", inline="cb",   group=grp_src)
-
 inp_kraken   = input.symbol("KRAKEN:XBTUSD",    "Kraken",   group=grp_src,
      tooltip="Used only when Dynamic Mode is OFF.\nIn Dynamic Mode, Kraken base currency is auto-converted (BTC → XBT) and quote (USDT → USD)")
-use_kraken   = input.bool(true, "Include", inline="kr",   group=grp_src)
-
 inp_mexc     = input.symbol("MEXC:BTCUSDT",     "MEXC",     group=grp_src,
      tooltip="Used only when Dynamic Mode is OFF")
-use_mexc     = input.bool(true, "Include", inline="mx",   group=grp_src)
-
 inp_okx      = input.symbol("OKX:BTCUSDT",      "OKX",      group=grp_src,
      tooltip="Used only when Dynamic Mode is OFF")
-use_okx      = input.bool(true, "Include", inline="okx",  group=grp_src)
-
 inp_kucoin   = input.symbol("KUCOIN:BTCUSDT",   "KuCoin",   group=grp_src,
      tooltip="Used only when Dynamic Mode is OFF")
-use_kucoin   = input.bool(true, "Include", inline="kuc",  group=grp_src)
+inp_blofin   = input.symbol("BLOFIN:BTCUSDT",   "BloFin",   group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+inp_bitget   = input.symbol("BITGET:BTCUSDT",   "Bitget",   group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+inp_coinex   = input.symbol("COINEX:BTCUSDT",   "CoinEx",   group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+
+// ── Exchange Toggles ───────────────────────────────────────────────────────────
+grp_ex = "Exchange Toggles"
+
+use_binance  = input.bool(true, "Binance",  group=grp_ex)
+use_bybit    = input.bool(true, "Bybit",    group=grp_ex)
+use_coinbase = input.bool(true, "Coinbase", group=grp_ex)
+use_kraken   = input.bool(true, "Kraken",   group=grp_ex)
+use_mexc     = input.bool(true, "MEXC",     group=grp_ex)
+use_okx      = input.bool(true, "OKX",      group=grp_ex)
+use_kucoin   = input.bool(true, "KuCoin",   group=grp_ex)
+use_blofin   = input.bool(true, "BloFin",   group=grp_ex)
+use_bitget   = input.bool(true, "Bitget",   group=grp_ex)
+use_coinex   = input.bool(true, "CoinEx",   group=grp_ex)
 
 // ── Display ───────────────────────────────────────────────────────────────────
 show_sd1   = input.bool(true,  "Show Value Area (±1 SD)",        group="Display")
@@ -58,6 +65,19 @@ shade_dev  = input.bool(true,  "Shade Developing Value Area",     group="Display
 shade_prev = input.bool(false, "Shade Previous Value Area",       group="Display")
 show_lbl   = input.bool(true,  "Show Labels",                     group="Display")
 show_ext   = input.bool(true,  "Extend Developing Lines to RHS",  group="Display")
+
+// ── Rolling VWAP ─────────────────────────────────────────────────────────────
+grp_rv      = "Rolling VWAP"
+show_rvwap  = input.bool(false,   "Show Rolling VWAP",      group=grp_rv,
+     tooltip="A VWAP that resets at the selected timeframe, computed using the same aggregated cross-exchange data as the main VWAP.")
+rv_tf       = input.string("Weekly", "Timeframe",
+     options=["Daily", "Weekly", "Monthly", "Quarterly", "Yearly"],
+     group=grp_rv)
+rv_show_sd1 = input.bool(true,    "Show ±1 SD Bands",       group=grp_rv)
+c_rvwap     = input.color(color.new(#FF9800, 0),  "rvVWAP",          group=grp_rv)
+c_rvah      = input.color(color.new(#FF9800, 40), "rvVAH (+1 SD)",   group=grp_rv)
+c_rval      = input.color(color.new(#FF9800, 40), "rvVAL (-1 SD)",   group=grp_rv)
+c_rv_fill   = input.color(color.new(#FF9800, 85), "Band Fill",       group=grp_rv)
 
 // ── Colours: Developing ───────────────────────────────────────────────────────
 c_vwap     = input.color(color.new(#2196F3, 0),  "VWAP",            group="Colours: Developing")
@@ -102,6 +122,9 @@ sym_kraken   = use_dynamic ? "KRAKEN:"   + _kr_base + _kr_quote : inp_kraken
 sym_mexc     = use_dynamic ? "MEXC:"     + _base    + _quote    : inp_mexc
 sym_okx      = use_dynamic ? "OKX:"      + _base    + _quote    : inp_okx
 sym_kucoin   = use_dynamic ? "KUCOIN:"   + _base    + _quote    : inp_kucoin
+sym_blofin   = use_dynamic ? "BLOFIN:"   + _base    + _quote    : inp_blofin
+sym_bitget   = use_dynamic ? "BITGET:"   + _base    + _quote    : inp_bitget
+sym_coinex   = use_dynamic ? "COINEX:"   + _base    + _quote    : inp_coinex
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 // ignore_invalid_symbol=true: if an exchange doesn't list this pair, the call
@@ -114,6 +137,9 @@ sym_kucoin   = use_dynamic ? "KUCOIN:"   + _base    + _quote    : inp_kucoin
 [tp_mx,  vol_mx]  = request.security(sym_mexc,     timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
 [tp_okx, vol_okx] = request.security(sym_okx,      timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
 [tp_kuc, vol_kuc] = request.security(sym_kucoin,   timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
+[tp_blf, vol_blf] = request.security(sym_blofin,   timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
+[tp_btg, vol_btg] = request.security(sym_bitget,   timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
+[tp_cex, vol_cex] = request.security(sym_coinex,   timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
 
 // ── Per-bar aggregation helpers ───────────────────────────────────────────────
 // An exchange is included only if its toggle is on AND it returned valid data.
@@ -125,17 +151,20 @@ f_tp2v(ena, t, v) => ena and not na(v) ? nz(t) * nz(t) * nz(v) : 0.0
 agg_vol  = f_vol (use_binance,  vol_bnb)           + f_vol (use_bybit,    vol_byb)           +
            f_vol (use_coinbase, vol_cb)             + f_vol (use_kraken,   vol_kr)            +
            f_vol (use_mexc,     vol_mx)             + f_vol (use_okx,      vol_okx)           +
-           f_vol (use_kucoin,   vol_kuc)
+           f_vol (use_kucoin,   vol_kuc)            + f_vol (use_blofin,   vol_blf)           +
+           f_vol (use_bitget,   vol_btg)            + f_vol (use_coinex,   vol_cex)
 
 agg_tpv  = f_tpv (use_binance,  tp_bnb, vol_bnb)   + f_tpv (use_bybit,    tp_byb, vol_byb)   +
            f_tpv (use_coinbase, tp_cb,  vol_cb)     + f_tpv (use_kraken,   tp_kr,  vol_kr)    +
            f_tpv (use_mexc,     tp_mx,  vol_mx)     + f_tpv (use_okx,      tp_okx, vol_okx)   +
-           f_tpv (use_kucoin,   tp_kuc, vol_kuc)
+           f_tpv (use_kucoin,   tp_kuc, vol_kuc)    + f_tpv (use_blofin,   tp_blf, vol_blf)   +
+           f_tpv (use_bitget,   tp_btg, vol_btg)    + f_tpv (use_coinex,   tp_cex, vol_cex)
 
 agg_tp2v = f_tp2v(use_binance,  tp_bnb, vol_bnb)   + f_tp2v(use_bybit,    tp_byb, vol_byb)   +
            f_tp2v(use_coinbase, tp_cb,  vol_cb)     + f_tp2v(use_kraken,   tp_kr,  vol_kr)    +
            f_tp2v(use_mexc,     tp_mx,  vol_mx)     + f_tp2v(use_okx,      tp_okx, vol_okx)   +
-           f_tp2v(use_kucoin,   tp_kuc, vol_kuc)
+           f_tp2v(use_kucoin,   tp_kuc, vol_kuc)    + f_tp2v(use_blofin,   tp_blf, vol_blf)   +
+           f_tp2v(use_bitget,   tp_btg, vol_btg)    + f_tp2v(use_coinex,   tp_cex, vol_cex)
 
 // ── Effective timeframe ───────────────────────────────────────────────────────
 tf_secs = timeframe.in_seconds()
@@ -196,6 +225,33 @@ vlo3 = not na(sd) ? vwap - sd3_mult * sd : na
 pvhi = not na(prev_sd) ? prev_vwap + prev_sd : na
 pvlo = not na(prev_sd) ? prev_vwap - prev_sd : na
 
+// ── Rolling VWAP computation ──────────────────────────────────────────────────
+// Uses the same aggregated cross-exchange data, resetting at the chosen timeframe.
+rv_new_period = rv_tf == "Yearly"    ? new_year  :
+                rv_tf == "Quarterly" ? new_qtr   :
+                rv_tf == "Monthly"   ? new_month :
+                rv_tf == "Weekly"    ? new_week  : new_day
+
+var float rv_cum_tpv  = 0.0
+var float rv_cum_vol  = 0.0
+var float rv_cum_tp2v = 0.0
+
+if rv_new_period
+    rv_cum_tpv  := agg_tpv
+    rv_cum_vol  := agg_vol
+    rv_cum_tp2v := agg_tp2v
+else
+    rv_cum_tpv  += agg_tpv
+    rv_cum_vol  += agg_vol
+    rv_cum_tp2v += agg_tp2v
+
+rv_vwap    = show_rvwap and rv_cum_vol > 0.0 ? rv_cum_tpv / rv_cum_vol : na
+rv_raw_var = show_rvwap and rv_cum_vol > 0.0 ? math.max(rv_cum_tp2v / rv_cum_vol - rv_vwap * rv_vwap, 0.0) : na
+rv_sd      = not na(rv_raw_var) ? math.sqrt(rv_raw_var) : na
+
+rv_vhi = not na(rv_sd) ? rv_vwap + rv_sd : na
+rv_vlo = not na(rv_sd) ? rv_vwap - rv_sd : na
+
 // ── Plots ─────────────────────────────────────────────────────────────────────
 p_vwap  = plot(vwap,                  "VWAP",    c_vwap, 2)
 p_vhi   = plot(show_sd1 ? vhi  : na, "VAH",     c_vah,  1)
@@ -209,11 +265,19 @@ p_pvwap = plot(show_prev ? prev_vwap : na, "P.VWAP", c_pvwap, 1, plot.style_line
 p_pvhi  = plot(show_prev ? pvhi      : na, "P.VAH",  c_pvah,  1, plot.style_linebr)
 p_pvlo  = plot(show_prev ? pvlo      : na, "P.VAL",  c_pval,  1, plot.style_linebr)
 
+// ── Rolling VWAP Plots ────────────────────────────────────────────────────────
+p_rvwap = plot(rv_vwap,                              "rvVWAP", c_rvwap, 2)
+p_rvhi  = plot(show_rvwap and rv_show_sd1 ? rv_vhi : na, "rvVAH",  c_rvah,  1)
+p_rvlo  = plot(show_rvwap and rv_show_sd1 ? rv_vlo : na, "rvVAL",  c_rval,  1)
+
 // ── Fills ─────────────────────────────────────────────────────────────────────
 fill(p_vhi,  p_vlo,  shade_dev  and show_sd1  ? c_fill_dev : na)
 fill(p_pvhi, p_pvlo, shade_prev and show_prev ? c_fill_prv : na)
 fill(p_vhi2, p_vlo2, shade_sd2  and show_sd2  ? c_fill_sd2 : na)
 fill(p_vhi3, p_vlo3, shade_sd3  and show_sd3  ? c_fill_sd3 : na)
+
+// ── Rolling VWAP Fill ─────────────────────────────────────────────────────────
+fill(p_rvhi, p_rvlo, show_rvwap and rv_show_sd1 ? c_rv_fill : na)
 
 // ── Extension lines ───────────────────────────────────────────────────────────
 var line ext_vwap_ln  = na
@@ -293,11 +357,15 @@ var label lbl_dval  = na
 var label lbl_pvwap = na
 var label lbl_pvah  = na
 var label lbl_pval  = na
+var label lbl_rvwap = na
+var label lbl_rvah  = na
+var label lbl_rval  = na
 
 if show_lbl and barstate.islast
     vis_range = chart.right_visible_bar_time - chart.left_visible_bar_time
     dev_x = time + int(vis_range * 0.10)
     prv_x = time + int(vis_range * 0.20)
+    rv_x  = time + int(vis_range * 0.30)
 
     label.delete(lbl_dvwap)
     label.delete(lbl_dvah)
@@ -340,8 +408,32 @@ if show_lbl and barstate.islast
                  xloc=xloc.bar_time, style=label.style_label_left,
                  color=c_lbl_p_bg, textcolor=c_lbl_p_tx, size=size.small)
 
+    if show_rvwap
+        label.delete(lbl_rvwap)
+        label.delete(lbl_rvah)
+        label.delete(lbl_rval)
+
+        if not na(rv_vwap)
+            lbl_rvwap := label.new(rv_x, rv_vwap,
+                 "rvVWAP " + str.tostring(rv_vwap, format.mintick),
+                 xloc=xloc.bar_time, style=label.style_label_left,
+                 color=c_rvwap, textcolor=color.white, size=size.small)
+        if rv_show_sd1 and not na(rv_vhi)
+            lbl_rvah := label.new(rv_x, rv_vhi,
+                 "rvVAH " + str.tostring(rv_vhi, format.mintick),
+                 xloc=xloc.bar_time, style=label.style_label_left,
+                 color=c_rvah, textcolor=color.white, size=size.small)
+        if rv_show_sd1 and not na(rv_vlo)
+            lbl_rval := label.new(rv_x, rv_vlo,
+                 "rvVAL " + str.tostring(rv_vlo, format.mintick),
+                 xloc=xloc.bar_time, style=label.style_label_left,
+                 color=c_rval, textcolor=color.white, size=size.small)
+
 // ── Alerts ────────────────────────────────────────────────────────────────────
-alertcondition(ta.cross(close, vwap),      "Price x VWAP",      "Price crossed Agg-VWAP")
-alertcondition(ta.cross(close, vhi),       "Price x VAH",       "Price crossed Agg-VAH (+1 SD)")
-alertcondition(ta.cross(close, vlo),       "Price x VAL",       "Price crossed Agg-VAL (-1 SD)")
-alertcondition(ta.cross(close, prev_vwap), "Price x Prev VWAP", "Price crossed Previous Agg-VWAP")
+alertcondition(ta.cross(close, vwap),      "Price x VWAP",         "Price crossed Agg-VWAP")
+alertcondition(ta.cross(close, vhi),       "Price x VAH",          "Price crossed Agg-VAH (+1 SD)")
+alertcondition(ta.cross(close, vlo),       "Price x VAL",          "Price crossed Agg-VAL (-1 SD)")
+alertcondition(ta.cross(close, prev_vwap), "Price x Prev VWAP",    "Price crossed Previous Agg-VWAP")
+alertcondition(ta.cross(close, rv_vwap),   "Price x rvVWAP",       "Price crossed Rolling Agg-VWAP")
+alertcondition(ta.cross(close, rv_vhi),    "Price x rvVAH",        "Price crossed Rolling Agg-VAH (+1 SD)")
+alertcondition(ta.cross(close, rv_vlo),    "Price x rvVAL",        "Price crossed Rolling Agg-VAL (-1 SD)")
