@@ -6,49 +6,6 @@ tf_mode = input.string("Auto", "Timeframe",
      options=["Auto", "Yearly", "Quarterly", "Monthly", "Weekly", "Daily"],
      group="Timeframe")
 
-// ── Exchange Sources ───────────────────────────────────────────────────────────
-// Dynamic Mode builds exchange symbols from the chart's base/quote currency
-// automatically. Disable to use the manual symbol inputs below instead.
-grp_src = "Exchange Sources"
-
-use_dynamic  = input.bool(true,  "Auto-detect pair from chart (Dynamic Mode)",
-     tooltip="When ON, exchange symbols are constructed automatically from the chart's base and quote currency (e.g. ETH + USDT → ETHUSDT on each exchange).\n\nWhen OFF, use the manual symbol inputs below. Useful when an exchange uses a non-standard ticker for a pair.",
-     group=grp_src)
-
-inp_binance  = input.symbol("BINANCE:BTCUSDT",  "Binance",  group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_bybit    = input.symbol("BYBIT:BTCUSDT",    "Bybit",    group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_coinbase = input.symbol("COINBASE:BTCUSD",  "Coinbase", group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF.\nIn Dynamic Mode, Coinbase quote currency is auto-converted (USDT → USD)")
-inp_kraken   = input.symbol("KRAKEN:XBTUSD",    "Kraken",   group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF.\nIn Dynamic Mode, Kraken base currency is auto-converted (BTC → XBT) and quote (USDT → USD)")
-inp_mexc     = input.symbol("MEXC:BTCUSDT",     "MEXC",     group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_okx      = input.symbol("OKX:BTCUSDT",      "OKX",      group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_kucoin   = input.symbol("KUCOIN:BTCUSDT",   "KuCoin",   group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_blofin   = input.symbol("BLOFIN:BTCUSDT",   "BloFin",   group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_bitget   = input.symbol("BITGET:BTCUSDT",   "Bitget",   group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_coinex   = input.symbol("COINEX:BTCUSDT",   "CoinEx",   group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-
-// ── Exchange Toggles ───────────────────────────────────────────────────────────
-grp_tog      = "Exchange Toggles"
-use_binance  = input.bool(true, "Binance",  group=grp_tog)
-use_bybit    = input.bool(true, "Bybit",    group=grp_tog)
-use_coinbase = input.bool(true, "Coinbase", group=grp_tog)
-use_kraken   = input.bool(true, "Kraken",   group=grp_tog)
-use_mexc     = input.bool(true, "MEXC",     group=grp_tog)
-use_okx      = input.bool(true, "OKX",      group=grp_tog)
-use_kucoin   = input.bool(true, "KuCoin",   group=grp_tog)
-use_blofin   = input.bool(true, "BloFin",   group=grp_tog)
-use_bitget   = input.bool(true, "Bitget",   group=grp_tog)
-use_coinex   = input.bool(true, "CoinEx",   group=grp_tog)
-
 // ── Display ───────────────────────────────────────────────────────────────────
 show_sd1   = input.bool(true,  "Show Value Area (±1 SD)",        group="Display")
 show_sd2   = input.bool(false, "Show ±SD2 Bands",                group="Display")
@@ -98,6 +55,55 @@ c_lbl_d_bg = input.color(color.new(#2196F3, 10), "Dev Label BG",    group="Colou
 c_lbl_d_tx = input.color(color.white,             "Dev Label Text",  group="Colours: Labels")
 c_lbl_p_bg = input.color(color.new(#9E9E9E, 10), "Prev Label BG",   group="Colours: Labels")
 c_lbl_p_tx = input.color(color.white,             "Prev Label Text", group="Colours: Labels")
+lbl_offset_dev = input.int(10, "Dev Label Offset (%)",     minval=0, maxval=100, group="Colours: Labels",
+     tooltip="Controls how far the developing period labels appear to the right of the last bar, as a percentage of the visible chart range.")
+lbl_offset_prv = input.int(20, "Prev Label Offset (%)",    minval=0, maxval=100, group="Colours: Labels",
+     tooltip="Controls how far the previous period labels appear to the right of the last bar, as a percentage of the visible chart range.")
+lbl_offset_rv  = input.int(15, "Rolling Label Offset (%)", minval=0, maxval=100, group="Colours: Labels",
+     tooltip="Controls how far the rolling VWAP labels appear to the right of the last bar, as a percentage of the visible chart range.")
+
+// ── Exchange Sources ───────────────────────────────────────────────────────────
+// Dynamic Mode builds exchange symbols from the chart's base/quote currency
+// automatically. Disable to use the manual symbol inputs below instead.
+grp_src = "Exchange Sources"
+
+use_dynamic  = input.bool(true,  "Auto-detect pair from chart (Dynamic Mode)",
+     tooltip="When ON, exchange symbols are constructed automatically from the chart's base and quote currency (e.g. ETH + USDT → ETHUSDT on each exchange).\n\nWhen OFF, use the manual symbol inputs below. Useful when an exchange uses a non-standard ticker for a pair.",
+     group=grp_src)
+
+inp_binance  = input.symbol("BINANCE:BTCUSDT",  "Binance",  group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+inp_bybit    = input.symbol("BYBIT:BTCUSDT",    "Bybit",    group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+inp_coinbase = input.symbol("COINBASE:BTCUSD",  "Coinbase", group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF.\nIn Dynamic Mode, Coinbase quote currency is auto-converted (USDT → USD)")
+inp_kraken   = input.symbol("KRAKEN:XBTUSD",    "Kraken",   group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF.\nIn Dynamic Mode, Kraken base currency is auto-converted (BTC → XBT) and quote (USDT → USD)")
+inp_mexc     = input.symbol("MEXC:BTCUSDT",     "MEXC",     group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+inp_okx      = input.symbol("OKX:BTCUSDT",      "OKX",      group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+inp_kucoin   = input.symbol("KUCOIN:BTCUSDT",   "KuCoin",   group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+inp_blofin   = input.symbol("BLOFIN:BTCUSDT",   "BloFin",   group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+inp_bitget   = input.symbol("BITGET:BTCUSDT",   "Bitget",   group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+inp_coinex   = input.symbol("COINEX:BTCUSDT",   "CoinEx",   group=grp_src,
+     tooltip="Used only when Dynamic Mode is OFF")
+
+// ── Exchange Toggles ───────────────────────────────────────────────────────────
+grp_tog      = "Exchange Toggles"
+use_binance  = input.bool(true, "Binance",  group=grp_tog)
+use_bybit    = input.bool(true, "Bybit",    group=grp_tog)
+use_coinbase = input.bool(true, "Coinbase", group=grp_tog)
+use_kraken   = input.bool(true, "Kraken",   group=grp_tog)
+use_mexc     = input.bool(true, "MEXC",     group=grp_tog)
+use_okx      = input.bool(true, "OKX",      group=grp_tog)
+use_kucoin   = input.bool(true, "KuCoin",   group=grp_tog)
+use_blofin   = input.bool(true, "BloFin",   group=grp_tog)
+use_bitget   = input.bool(true, "Bitget",   group=grp_tog)
+use_coinex   = input.bool(true, "CoinEx",   group=grp_tog)
 
 // ── Dynamic symbol construction ───────────────────────────────────────────────
 _base  = syminfo.basecurrency
@@ -351,9 +357,9 @@ var label lbl_rv_val  = na
 
 if show_lbl and barstate.islast
     vis_range = chart.right_visible_bar_time - chart.left_visible_bar_time
-    dev_x = time + int(vis_range * 0.10)
-    prv_x = time + int(vis_range * 0.20)
-    rv_x  = time + int(vis_range * 0.15)
+    dev_x = time + int(vis_range * lbl_offset_dev / 100)
+    prv_x = time + int(vis_range * lbl_offset_prv / 100)
+    rv_x  = time + int(vis_range * lbl_offset_rv  / 100)
 
     label.delete(lbl_dvwap)
     label.delete(lbl_dvah)
