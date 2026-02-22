@@ -143,12 +143,18 @@ if show_ext
                  extend=extend.right, style=line.style_dashed, color=c_val, width=1)
     else
         if not na(ext_vwap_ln) and not na(vwap)
+            line.set_x1(ext_vwap_ln, bar_index)
+            line.set_x2(ext_vwap_ln, bar_index + 1)
             line.set_y1(ext_vwap_ln, vwap)
             line.set_y2(ext_vwap_ln, vwap)
         if not na(ext_vhi_ln) and not na(vhi)
+            line.set_x1(ext_vhi_ln, bar_index)
+            line.set_x2(ext_vhi_ln, bar_index + 1)
             line.set_y1(ext_vhi_ln, vhi)
             line.set_y2(ext_vhi_ln, vhi)
         if not na(ext_vlo_ln) and not na(vlo)
+            line.set_x1(ext_vlo_ln, bar_index)
+            line.set_x2(ext_vlo_ln, bar_index + 1)
             line.set_y1(ext_vlo_ln, vlo)
             line.set_y2(ext_vlo_ln, vlo)
 
