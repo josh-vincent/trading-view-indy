@@ -1,5 +1,5 @@
 //@version=6
-indicator("Multi-TF VWAP + Value Areas", shorttitle="VWAP-MTF", overlay=true, max_lines_count=20, max_labels_count=50)
+indicator("Multi-TF VWAP + Value Areas", shorttitle="VWAP-MTF", overlay=true, max_lines_count=500, max_labels_count=50)
 
 // ── Timeframe ─────────────────────────────────────────────────────────────────
 tf_mode = input.string("Auto", "Timeframe",
@@ -8,20 +8,34 @@ tf_mode = input.string("Auto", "Timeframe",
 
 // ── Display ───────────────────────────────────────────────────────────────────
 show_sd1   = input.bool(true,  "Show Value Area (±1 SD)",        group="Display")
-show_sd2   = input.bool(false, "Show ±2 SD Bands",               group="Display")
-show_sd3   = input.bool(false, "Show ±3 SD Bands",               group="Display")
+show_sd2   = input.bool(false, "Show ±SD2 Bands",                group="Display")
+sd2_mult   = input.float(2.0,  "SD2 Multiplier",  minval=0.1, step=0.1, group="Display",
+     tooltip="Custom multiplier for SD band 2 (default 2.0)")
+shade_sd2  = input.bool(false, "Shade ±SD2 Band",                group="Display")
+show_sd3   = input.bool(false, "Show ±SD3 Bands",                group="Display")
+sd3_mult   = input.float(3.0,  "SD3 Multiplier",  minval=0.1, step=0.1, group="Display",
+     tooltip="Custom multiplier for SD band 3 (default 3.0)")
+shade_sd3  = input.bool(false, "Shade ±SD3 Band",                group="Display")
 show_prev  = input.bool(true,  "Show Previous Period",            group="Display")
 shade_dev  = input.bool(true,  "Shade Developing Value Area",     group="Display")
 shade_prev = input.bool(false, "Shade Previous Value Area",       group="Display")
 show_lbl   = input.bool(true,  "Show Labels",                     group="Display")
 show_ext   = input.bool(true,  "Extend Developing Lines to RHS",  group="Display")
 
+// ── Rolling VWAP ──────────────────────────────────────────────────────────────
+show_rvwap = input.bool(false, "Show Rolling VWAP",               group="Rolling VWAP")
+rvwap_days = input.int(365,    "Rolling VWAP Days", minval=1, maxval=1000, group="Rolling VWAP",
+     tooltip="Number of calendar days for the rolling VWAP lookback")
+c_rvwap    = input.color(color.new(#FF5722, 0), "Rolling VWAP Color", group="Rolling VWAP")
+
 // ── Colours: Developing ───────────────────────────────────────────────────────
 c_vwap     = input.color(color.new(#2196F3, 0),  "VWAP",            group="Colours: Developing")
 c_vah      = input.color(color.new(#4CAF50, 0),  "VAH",             group="Colours: Developing")
 c_val      = input.color(color.new(#4CAF50, 0),  "VAL",             group="Colours: Developing")
-c_sd2      = input.color(color.new(#FF9800, 20), "±2 SD",           group="Colours: Developing")
-c_sd3      = input.color(color.new(#F44336, 20), "±3 SD",           group="Colours: Developing")
+c_sd2      = input.color(color.new(#FF9800, 20), "±SD2",            group="Colours: Developing")
+c_fill_sd2 = input.color(color.new(#FF9800, 85), "SD2 Fill",        group="Colours: Developing")
+c_sd3      = input.color(color.new(#F44336, 20), "±SD3",            group="Colours: Developing")
+c_fill_sd3 = input.color(color.new(#F44336, 85), "SD3 Fill",        group="Colours: Developing")
 c_fill_dev = input.color(color.new(#4CAF50, 85), "Value Area Fill", group="Colours: Developing")
 
 // ── Colours: Previous ─────────────────────────────────────────────────────────
@@ -93,37 +107,64 @@ vwap     = cum_vol > 0.0 ? cum_tpv / cum_vol : na
 _raw_var = cum_vol > 0.0 ? math.max(cum_tp2v / cum_vol - vwap * vwap, 0.0) : na
 sd       = not na(_raw_var) ? math.sqrt(_raw_var) : na
 
-vhi  = not na(sd) ? vwap + sd        : na
-vlo  = not na(sd) ? vwap - sd        : na
-vhi2 = not na(sd) ? vwap + 2.0 * sd  : na
-vlo2 = not na(sd) ? vwap - 2.0 * sd  : na
-vhi3 = not na(sd) ? vwap + 3.0 * sd  : na
-vlo3 = not na(sd) ? vwap - 3.0 * sd  : na
+vhi  = not na(sd) ? vwap + sd            : na
+vlo  = not na(sd) ? vwap - sd            : na
+vhi2 = not na(sd) ? vwap + sd2_mult * sd : na
+vlo2 = not na(sd) ? vwap - sd2_mult * sd : na
+vhi3 = not na(sd) ? vwap + sd3_mult * sd : na
+vlo3 = not na(sd) ? vwap - sd3_mult * sd : na
 
 pvhi = not na(prev_sd) ? prev_vwap + prev_sd : na
 pvlo = not na(prev_sd) ? prev_vwap - prev_sd : na
 
+// ── Rolling VWAP computation ──────────────────────────────────────────────────
+// Approximates a rolling N-day VWAP using a bar-count lookback.
+// Works best on daily and higher timeframes. On intraday charts the day-to-bar
+// conversion assumes fixed bars/day, which is an approximation.
+bars_per_day  = tf_secs > 0 ? math.ceil(86400 / tf_secs) : 1
+rvwap_lb      = math.max(1, math.min(rvwap_days * bars_per_day, 5000))
+rvwap_tpv_sum = math.sum(tp * volume, rvwap_lb)
+rvwap_vol_sum = math.sum(volume, rvwap_lb)
+rvwap         = show_rvwap and rvwap_vol_sum > 0 ? rvwap_tpv_sum / rvwap_vol_sum : na
+
 // ── Plots ─────────────────────────────────────────────────────────────────────
-p_vwap  = plot(vwap,                 "VWAP",  c_vwap, 2)
-p_vhi   = plot(show_sd1 ? vhi : na, "VAH",   c_vah,  1)
-p_vlo   = plot(show_sd1 ? vlo : na, "VAL",   c_val,  1)
-plot(show_sd2 ? vhi2 : na,           "VAH+2", c_sd2,  1)
-plot(show_sd2 ? vlo2 : na,           "VAL-2", c_sd2,  1)
-plot(show_sd3 ? vhi3 : na,           "VAH+3", c_sd3,  1)
-plot(show_sd3 ? vlo3 : na,           "VAL-3", c_sd3,  1)
+p_vwap  = plot(vwap,                  "VWAP",    c_vwap, 2)
+p_vhi   = plot(show_sd1 ? vhi  : na, "VAH",     c_vah,  1)
+p_vlo   = plot(show_sd1 ? vlo  : na, "VAL",     c_val,  1)
+p_vhi2  = plot(show_sd2 ? vhi2 : na, "VAH+SD2", c_sd2,  1)
+p_vlo2  = plot(show_sd2 ? vlo2 : na, "VAL-SD2", c_sd2,  1)
+p_vhi3  = plot(show_sd3 ? vhi3 : na, "VAH+SD3", c_sd3,  1)
+p_vlo3  = plot(show_sd3 ? vlo3 : na, "VAL-SD3", c_sd3,  1)
 
 p_pvwap = plot(show_prev ? prev_vwap : na, "P.VWAP", c_pvwap, 1, plot.style_linebr)
 p_pvhi  = plot(show_prev ? pvhi      : na, "P.VAH",  c_pvah,  1, plot.style_linebr)
 p_pvlo  = plot(show_prev ? pvlo      : na, "P.VAL",  c_pval,  1, plot.style_linebr)
 
+// Rolling VWAP plot (historical bars — solid line; extension below is dotted)
+plot(rvwap, "rVWAP", c_rvwap, 1)
+
+// ── Fills ─────────────────────────────────────────────────────────────────────
 fill(p_vhi,  p_vlo,  shade_dev  and show_sd1  ? c_fill_dev : na)
 fill(p_pvhi, p_pvlo, shade_prev and show_prev ? c_fill_prv : na)
+fill(p_vhi2, p_vlo2, shade_sd2  and show_sd2  ? c_fill_sd2 : na)
+fill(p_vhi3, p_vlo3, shade_sd3  and show_sd3  ? c_fill_sd3 : na)
 
-// ── Extension lines (dashed, developing period) ───────────────────────────────
-var line ext_vwap_ln = na
-var line ext_vhi_ln  = na
-var line ext_vlo_ln  = na
+// ── Extension lines ───────────────────────────────────────────────────────────
+// Developing period lines track the current bar and extend to the right edge.
+var line ext_vwap_ln  = na
+var line ext_vhi_ln   = na
+var line ext_vlo_ln   = na
 
+// Previous period lines extend from the last bar to the right edge so they
+// continue through the entire developing area to the start of the next period.
+var line ext_pvwap_ln = na
+var line ext_pvah_ln  = na
+var line ext_pval_ln  = na
+
+// Rolling VWAP dotted extension line
+var line ext_rvwap_ln = na
+
+// Developing extension lines
 if show_ext
     if new_period
         if not na(ext_vwap_ln)
@@ -158,6 +199,29 @@ if show_ext
             line.set_y1(ext_vlo_ln, vlo)
             line.set_y2(ext_vlo_ln, vlo)
 
+// Previous period extension lines — recreated on the last bar so they always
+// reach the right edge, extending previous PVAL through the developing area.
+if show_prev and barstate.islast
+    line.delete(ext_pvwap_ln)
+    line.delete(ext_pvah_ln)
+    line.delete(ext_pval_ln)
+    if not na(prev_vwap)
+        ext_pvwap_ln := line.new(bar_index, prev_vwap, bar_index + 1, prev_vwap,
+             extend=extend.right, style=line.style_dashed, color=c_pvwap, width=1)
+    if not na(pvhi)
+        ext_pvah_ln := line.new(bar_index, pvhi, bar_index + 1, pvhi,
+             extend=extend.right, style=line.style_dashed, color=c_pvah, width=1)
+    if not na(pvlo)
+        ext_pval_ln := line.new(bar_index, pvlo, bar_index + 1, pvlo,
+             extend=extend.right, style=line.style_dashed, color=c_pval, width=1)
+
+// Rolling VWAP dotted extension line
+if show_rvwap and barstate.islast
+    line.delete(ext_rvwap_ln)
+    if not na(rvwap)
+        ext_rvwap_ln := line.new(bar_index, rvwap, bar_index + 1, rvwap,
+             extend=extend.right, style=line.style_dotted, color=c_rvwap, width=2)
+
 // ── Label prefixes based on effective timeframe ───────────────────────────────
 // Developing: dy=Yearly, dq=Quarterly, dm=Monthly, dw=Weekly, dd=Daily
 // Previous:   py=Yearly, pq=Quarterly, pm=Monthly, pw=Weekly, pd=Daily
@@ -176,14 +240,13 @@ p_pfx = switch eff_tf
     => "pd"
 
 // ── Labels ────────────────────────────────────────────────────────────────────
-// Developing labels: 10% of visible range to the right of last bar
-// Previous labels:   20% of visible range to the right of last bar
 var label lbl_dvwap = na
 var label lbl_dvah  = na
 var label lbl_dval  = na
 var label lbl_pvwap = na
 var label lbl_pvah  = na
 var label lbl_pval  = na
+var label lbl_rvwap = na
 
 if show_lbl and barstate.islast
     vis_range = chart.right_visible_bar_time - chart.left_visible_bar_time
@@ -230,6 +293,15 @@ if show_lbl and barstate.islast
                  p_pfx + "VAL " + str.tostring(pvlo, format.mintick),
                  xloc=xloc.bar_time, style=label.style_label_left,
                  color=c_lbl_p_bg, textcolor=c_lbl_p_tx, size=size.small)
+
+    // Rolling VWAP label — e.g. "365D rVWAP 45000.00"
+    if show_rvwap
+        label.delete(lbl_rvwap)
+        if not na(rvwap)
+            lbl_rvwap := label.new(dev_x, rvwap,
+                 str.tostring(rvwap_days) + "D rVWAP " + str.tostring(rvwap, format.mintick),
+                 xloc=xloc.bar_time, style=label.style_label_left,
+                 color=color.new(c_rvwap, 10), textcolor=color.white, size=size.small)
 
 // ── Alerts ────────────────────────────────────────────────────────────────────
 alertcondition(ta.cross(close, vwap),      "Price x VWAP",      "Price crossed VWAP")
