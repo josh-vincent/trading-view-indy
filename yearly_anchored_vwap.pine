@@ -155,15 +155,19 @@ if show_ext
 // ── Label prefixes based on effective timeframe ───────────────────────────────
 // Developing: dy=Yearly, dq=Quarterly, dm=Monthly, dw=Weekly, dd=Daily
 // Previous:   py=Yearly, pq=Quarterly, pm=Monthly, pw=Weekly, pd=Daily
-d_pfx = eff_tf == "Yearly"    ? "dy" :
-        eff_tf == "Quarterly" ? "dq" :
-        eff_tf == "Monthly"   ? "dm" :
-        eff_tf == "Weekly"    ? "dw" : "dd"
+d_pfx = switch eff_tf
+    "Yearly"    => "dy"
+    "Quarterly" => "dq"
+    "Monthly"   => "dm"
+    "Weekly"    => "dw"
+    => "dd"
 
-p_pfx = eff_tf == "Yearly"    ? "py" :
-        eff_tf == "Quarterly" ? "pq" :
-        eff_tf == "Monthly"   ? "pm" :
-        eff_tf == "Weekly"    ? "pw" : "pd"
+p_pfx = switch eff_tf
+    "Yearly"    => "py"
+    "Quarterly" => "pq"
+    "Monthly"   => "pm"
+    "Weekly"    => "pw"
+    => "pd"
 
 // ── Labels ────────────────────────────────────────────────────────────────────
 // Developing labels: 10% of visible range to the right of last bar
