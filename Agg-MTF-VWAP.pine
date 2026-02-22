@@ -1,5 +1,5 @@
 //@version=6
-indicator("Agg-MTF-VWAP", shorttitle="Agg-VWAP", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator("Lowkeigh-MTF_VWAP", shorttitle="Lowkeigh-MTF_VWAP", overlay=true, max_lines_count=500, max_labels_count=500)
 
 // ── Timeframe ─────────────────────────────────────────────────────────────────
 tf_mode = input.string("Auto", "Timeframe",
@@ -251,12 +251,15 @@ fill(p_vhi3,   p_vlo3,   shade_sd3  and show_sd3               ? c_fill_sd3 : na
 fill(p_rv_vah, p_rv_val, rv_shade   and rv_show and rv_show_sd ? c_rv_fill  : na)
 
 // ── Extension lines ───────────────────────────────────────────────────────────
-var line ext_vwap_ln  = na
-var line ext_vhi_ln   = na
-var line ext_vlo_ln   = na
-var line ext_pvwap_ln = na
-var line ext_pvah_ln  = na
-var line ext_pval_ln  = na
+var line ext_vwap_ln    = na
+var line ext_vhi_ln     = na
+var line ext_vlo_ln     = na
+var line ext_pvwap_ln   = na
+var line ext_pvah_ln    = na
+var line ext_pval_ln    = na
+var line ext_rv_vwap_ln = na
+var line ext_rv_vah_ln  = na
+var line ext_rv_val_ln  = na
 
 if show_ext
     if new_period
@@ -305,6 +308,20 @@ if show_prev and barstate.islast
     if not na(pvlo)
         ext_pval_ln := line.new(bar_index, pvlo, bar_index + 1, pvlo,
              extend=extend.right, style=line.style_dashed, color=c_pval, width=1)
+
+if rv_show and barstate.islast
+    line.delete(ext_rv_vwap_ln)
+    line.delete(ext_rv_vah_ln)
+    line.delete(ext_rv_val_ln)
+    if not na(rv_vwap)
+        ext_rv_vwap_ln := line.new(bar_index, rv_vwap, bar_index + 1, rv_vwap,
+             extend=extend.right, style=line.style_dashed, color=c_rv_vwap, width=1)
+    if not na(rv_vah)
+        ext_rv_vah_ln := line.new(bar_index, rv_vah, bar_index + 1, rv_vah,
+             extend=extend.right, style=line.style_dashed, color=c_rv_vah, width=1)
+    if not na(rv_val)
+        ext_rv_val_ln := line.new(bar_index, rv_val, bar_index + 1, rv_val,
+             extend=extend.right, style=line.style_dashed, color=c_rv_val, width=1)
 
 // ── Label prefixes based on effective timeframe ───────────────────────────────
 d_pfx = switch eff_tf
