@@ -1,0 +1,357 @@
+// =============================================================================
+// Agg-MTF-VWAP — Aggregated Multi-Timeframe VWAP
+//
+// Aggregates volume and price (hlc3) from up to 7 exchanges via
+// request.security(), then computes a single unified VWAP and SD bands.
+//
+// Each enabled exchange contributes its own volume-weighted typical price
+// to the cumulative totals:
+//   agg_tpv  = Σ (tp_i × vol_i)
+//   agg_vol  = Σ vol_i
+//   agg_tp2v = Σ (tp_i² × vol_i)
+//   VWAP     = agg_tpv / agg_vol
+//   Variance = agg_tp2v / agg_vol − VWAP²
+//
+// Supported exchanges (configurable symbols):
+//   Binance  | Bybit | Coinbase | Kraken | MEXC | OKX | KuCoin
+//
+// Timeframe periods supported (Auto or manual):
+//   Yearly | Quarterly | Monthly | Weekly | Daily
+// =============================================================================
+
+//@version=6
+indicator("Agg-MTF-VWAP", shorttitle="Agg-MTF-VWAP", overlay=true, max_lines_count=500, max_labels_count=50)
+
+// ── Exchange Sources ───────────────────────────────────────────────────────────
+var string g_ex = "Exchange Sources"
+
+use_binance  = input.bool(true,  "Binance",  group=g_ex, inline="ex_binance")
+sym_binance  = input.symbol("BINANCE:BTCUSDT",  "",       group=g_ex, inline="ex_binance")
+
+use_bybit    = input.bool(true,  "Bybit",    group=g_ex, inline="ex_bybit")
+sym_bybit    = input.symbol("BYBIT:BTCUSDT",    "",       group=g_ex, inline="ex_bybit")
+
+use_coinbase = input.bool(true,  "Coinbase", group=g_ex, inline="ex_coinbase")
+sym_coinbase = input.symbol("COINBASE:BTCUSD",  "",       group=g_ex, inline="ex_coinbase")
+
+use_kraken   = input.bool(true,  "Kraken",   group=g_ex, inline="ex_kraken")
+sym_kraken   = input.symbol("KRAKEN:XBTUSD",    "",       group=g_ex, inline="ex_kraken")
+
+use_mexc     = input.bool(true,  "MEXC",     group=g_ex, inline="ex_mexc")
+sym_mexc     = input.symbol("MEXC:BTCUSDT",     "",       group=g_ex, inline="ex_mexc")
+
+use_okx      = input.bool(true,  "OKX",      group=g_ex, inline="ex_okx")
+sym_okx      = input.symbol("OKX:BTCUSDT",      "",       group=g_ex, inline="ex_okx")
+
+use_kucoin   = input.bool(true,  "KuCoin",   group=g_ex, inline="ex_kucoin")
+sym_kucoin   = input.symbol("KUCOIN:BTCUSDT",   "",       group=g_ex, inline="ex_kucoin")
+
+// ── Timeframe ─────────────────────────────────────────────────────────────────
+tf_mode = input.string("Auto", "Timeframe",
+     options=["Auto", "Yearly", "Quarterly", "Monthly", "Weekly", "Daily"],
+     group="Timeframe")
+
+// ── Display ───────────────────────────────────────────────────────────────────
+show_sd1   = input.bool(true,  "Show Value Area (±1 SD)",        group="Display")
+show_sd2   = input.bool(false, "Show ±SD2 Bands",                group="Display")
+sd2_mult   = input.float(2.0,  "SD2 Multiplier",  minval=0.1, step=0.1, group="Display",
+     tooltip="Custom multiplier for SD band 2 (default 2.0)")
+shade_sd2  = input.bool(false, "Shade ±SD2 Band",                group="Display")
+show_sd3   = input.bool(false, "Show ±SD3 Bands",                group="Display")
+sd3_mult   = input.float(3.0,  "SD3 Multiplier",  minval=0.1, step=0.1, group="Display",
+     tooltip="Custom multiplier for SD band 3 (default 3.0)")
+shade_sd3  = input.bool(false, "Shade ±SD3 Band",                group="Display")
+show_prev  = input.bool(true,  "Show Previous Period",            group="Display")
+shade_dev  = input.bool(true,  "Shade Developing Value Area",     group="Display")
+shade_prev = input.bool(false, "Shade Previous Value Area",       group="Display")
+show_lbl   = input.bool(true,  "Show Labels",                     group="Display")
+show_ext   = input.bool(true,  "Extend Developing Lines to RHS",  group="Display")
+
+// ── Colours: Developing ───────────────────────────────────────────────────────
+c_vwap     = input.color(color.new(#2196F3, 0),  "VWAP",            group="Colours: Developing")
+c_vah      = input.color(color.new(#4CAF50, 0),  "VAH",             group="Colours: Developing")
+c_val      = input.color(color.new(#4CAF50, 0),  "VAL",             group="Colours: Developing")
+c_sd2      = input.color(color.new(#FF9800, 20), "±SD2",            group="Colours: Developing")
+c_fill_sd2 = input.color(color.new(#FF9800, 85), "SD2 Fill",        group="Colours: Developing")
+c_sd3      = input.color(color.new(#F44336, 20), "±SD3",            group="Colours: Developing")
+c_fill_sd3 = input.color(color.new(#F44336, 85), "SD3 Fill",        group="Colours: Developing")
+c_fill_dev = input.color(color.new(#4CAF50, 85), "Value Area Fill", group="Colours: Developing")
+
+// ── Colours: Previous ─────────────────────────────────────────────────────────
+c_pvwap    = input.color(color.new(#9E9E9E, 30), "Prev VWAP",       group="Colours: Previous")
+c_pvah     = input.color(color.new(#9E9E9E, 30), "Prev VAH",        group="Colours: Previous")
+c_pval     = input.color(color.new(#9E9E9E, 30), "Prev VAL",        group="Colours: Previous")
+c_fill_prv = input.color(color.new(#9E9E9E, 85), "Value Area Fill", group="Colours: Previous")
+
+// ── Colours: Labels ───────────────────────────────────────────────────────────
+c_lbl_d_bg = input.color(color.new(#2196F3, 10), "Dev Label BG",    group="Colours: Labels")
+c_lbl_d_tx = input.color(color.white,             "Dev Label Text",  group="Colours: Labels")
+c_lbl_p_bg = input.color(color.new(#9E9E9E, 10), "Prev Label BG",   group="Colours: Labels")
+c_lbl_p_tx = input.color(color.white,             "Prev Label Text", group="Colours: Labels")
+
+// ── Effective timeframe ───────────────────────────────────────────────────────
+// Auto TF thresholds (timeframe.in_seconds()):
+//   >= 86400s (1 day)   → Yearly
+//   >  14400s (4 hours) → Quarterly
+//   >= 3600s  (1 hour)  → Monthly
+//   >= 1800s  (30 min)  → Weekly
+//   <  1800s            → Daily
+tf_secs = timeframe.in_seconds()
+
+eff_tf = tf_mode != "Auto" ? tf_mode :
+         tf_secs >= 86400  ? "Yearly" :
+         tf_secs >  14400  ? "Quarterly" :
+         tf_secs >= 3600   ? "Monthly" :
+         tf_secs >= 1800   ? "Weekly" : "Daily"
+
+// ── Period detection ──────────────────────────────────────────────────────────
+cur_q  = month(time) <= 3 ? 1 : month(time) <= 6 ? 2 : month(time) <= 9 ? 3 : 4
+prev_q = barstate.isfirst ? 0 : (month(time[1]) <= 3 ? 1 : month(time[1]) <= 6 ? 2 : month(time[1]) <= 9 ? 3 : 4)
+
+new_year  = barstate.isfirst ? true : year(time)       != year(time[1])
+new_qtr   = new_year         ? true : cur_q            != prev_q
+new_month = new_qtr          ? true : month(time)      != (barstate.isfirst ? -1 : month(time[1]))
+new_week  = new_month        ? true : weekofyear(time) != (barstate.isfirst ? -1 : weekofyear(time[1]))
+new_day   = new_week         ? true : dayofmonth(time) != (barstate.isfirst ? -1 : dayofmonth(time[1]))
+
+new_period = eff_tf == "Yearly"    ? new_year  :
+             eff_tf == "Quarterly" ? new_qtr   :
+             eff_tf == "Monthly"   ? new_month :
+             eff_tf == "Weekly"    ? new_week  : new_day
+
+// ── Fetch OHLCV from each exchange ────────────────────────────────────────────
+// Each request.security call fetches [hlc3, volume] for the given symbol.
+// ignore_invalid_symbol=true returns na instead of erroring on missing symbols.
+[tp_bn, vol_bn] = request.security(sym_binance,  timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
+[tp_bt, vol_bt] = request.security(sym_bybit,    timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
+[tp_cb, vol_cb] = request.security(sym_coinbase, timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
+[tp_kr, vol_kr] = request.security(sym_kraken,   timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
+[tp_mx, vol_mx] = request.security(sym_mexc,     timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
+[tp_ok, vol_ok] = request.security(sym_okx,      timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
+[tp_kc, vol_kc] = request.security(sym_kucoin,   timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
+
+// ── Per-exchange contributions (zero when disabled or data unavailable) ────────
+// tpv  = typical_price × volume         (numerator for VWAP)
+// tp2v = typical_price² × volume        (numerator for variance)
+e_vol_bn  = use_binance  and not na(vol_bn)  and not na(tp_bn)  ? nz(vol_bn)  : 0.0
+e_tpv_bn  = use_binance  and not na(vol_bn)  and not na(tp_bn)  ? nz(tp_bn)  * nz(vol_bn)  : 0.0
+e_tp2v_bn = use_binance  and not na(vol_bn)  and not na(tp_bn)  ? nz(tp_bn)  * nz(tp_bn)  * nz(vol_bn)  : 0.0
+
+e_vol_bt  = use_bybit    and not na(vol_bt)  and not na(tp_bt)  ? nz(vol_bt)  : 0.0
+e_tpv_bt  = use_bybit    and not na(vol_bt)  and not na(tp_bt)  ? nz(tp_bt)  * nz(vol_bt)  : 0.0
+e_tp2v_bt = use_bybit    and not na(vol_bt)  and not na(tp_bt)  ? nz(tp_bt)  * nz(tp_bt)  * nz(vol_bt)  : 0.0
+
+e_vol_cb  = use_coinbase and not na(vol_cb)  and not na(tp_cb)  ? nz(vol_cb)  : 0.0
+e_tpv_cb  = use_coinbase and not na(vol_cb)  and not na(tp_cb)  ? nz(tp_cb)  * nz(vol_cb)  : 0.0
+e_tp2v_cb = use_coinbase and not na(vol_cb)  and not na(tp_cb)  ? nz(tp_cb)  * nz(tp_cb)  * nz(vol_cb)  : 0.0
+
+e_vol_kr  = use_kraken   and not na(vol_kr)  and not na(tp_kr)  ? nz(vol_kr)  : 0.0
+e_tpv_kr  = use_kraken   and not na(vol_kr)  and not na(tp_kr)  ? nz(tp_kr)  * nz(vol_kr)  : 0.0
+e_tp2v_kr = use_kraken   and not na(vol_kr)  and not na(tp_kr)  ? nz(tp_kr)  * nz(tp_kr)  * nz(vol_kr)  : 0.0
+
+e_vol_mx  = use_mexc     and not na(vol_mx)  and not na(tp_mx)  ? nz(vol_mx)  : 0.0
+e_tpv_mx  = use_mexc     and not na(vol_mx)  and not na(tp_mx)  ? nz(tp_mx)  * nz(vol_mx)  : 0.0
+e_tp2v_mx = use_mexc     and not na(vol_mx)  and not na(tp_mx)  ? nz(tp_mx)  * nz(tp_mx)  * nz(vol_mx)  : 0.0
+
+e_vol_ok  = use_okx      and not na(vol_ok)  and not na(tp_ok)  ? nz(vol_ok)  : 0.0
+e_tpv_ok  = use_okx      and not na(vol_ok)  and not na(tp_ok)  ? nz(tp_ok)  * nz(vol_ok)  : 0.0
+e_tp2v_ok = use_okx      and not na(vol_ok)  and not na(tp_ok)  ? nz(tp_ok)  * nz(tp_ok)  * nz(vol_ok)  : 0.0
+
+e_vol_kc  = use_kucoin   and not na(vol_kc)  and not na(tp_kc)  ? nz(vol_kc)  : 0.0
+e_tpv_kc  = use_kucoin   and not na(vol_kc)  and not na(tp_kc)  ? nz(tp_kc)  * nz(vol_kc)  : 0.0
+e_tp2v_kc = use_kucoin   and not na(vol_kc)  and not na(tp_kc)  ? nz(tp_kc)  * nz(tp_kc)  * nz(vol_kc)  : 0.0
+
+// ── Aggregate across all enabled exchanges for this bar ────────────────────────
+bar_vol  = e_vol_bn  + e_vol_bt  + e_vol_cb  + e_vol_kr  + e_vol_mx  + e_vol_ok  + e_vol_kc
+bar_tpv  = e_tpv_bn  + e_tpv_bt  + e_tpv_cb  + e_tpv_kr  + e_tpv_mx  + e_tpv_ok  + e_tpv_kc
+bar_tp2v = e_tp2v_bn + e_tp2v_bt + e_tp2v_cb + e_tp2v_kr + e_tp2v_mx + e_tp2v_ok + e_tp2v_kc
+
+// ── VWAP accumulation ─────────────────────────────────────────────────────────
+var float cum_tpv   = 0.0
+var float cum_vol   = 0.0
+var float cum_tp2v  = 0.0
+var float prev_vwap = na
+var float prev_sd   = na
+
+if new_period
+    if cum_vol > 0.0
+        float _pv  = cum_tpv / cum_vol
+        float _var = math.max(cum_tp2v / cum_vol - _pv * _pv, 0.0)
+        prev_vwap := _pv
+        prev_sd   := math.sqrt(_var)
+    cum_tpv  := bar_tpv
+    cum_vol  := bar_vol
+    cum_tp2v := bar_tp2v
+else
+    cum_tpv  += bar_tpv
+    cum_vol  += bar_vol
+    cum_tp2v += bar_tp2v
+
+vwap     = cum_vol > 0.0 ? cum_tpv / cum_vol : na
+_raw_var = cum_vol > 0.0 ? math.max(cum_tp2v / cum_vol - vwap * vwap, 0.0) : na
+sd       = not na(_raw_var) ? math.sqrt(_raw_var) : na
+
+vhi  = not na(sd) ? vwap + sd            : na
+vlo  = not na(sd) ? vwap - sd            : na
+vhi2 = not na(sd) ? vwap + sd2_mult * sd : na
+vlo2 = not na(sd) ? vwap - sd2_mult * sd : na
+vhi3 = not na(sd) ? vwap + sd3_mult * sd : na
+vlo3 = not na(sd) ? vwap - sd3_mult * sd : na
+
+pvhi = not na(prev_sd) ? prev_vwap + prev_sd : na
+pvlo = not na(prev_sd) ? prev_vwap - prev_sd : na
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+p_vwap  = plot(vwap,                  "VWAP",    c_vwap, 2)
+p_vhi   = plot(show_sd1 ? vhi  : na, "VAH",     c_vah,  1)
+p_vlo   = plot(show_sd1 ? vlo  : na, "VAL",     c_val,  1)
+p_vhi2  = plot(show_sd2 ? vhi2 : na, "VAH+SD2", c_sd2,  1)
+p_vlo2  = plot(show_sd2 ? vlo2 : na, "VAL-SD2", c_sd2,  1)
+p_vhi3  = plot(show_sd3 ? vhi3 : na, "VAH+SD3", c_sd3,  1)
+p_vlo3  = plot(show_sd3 ? vlo3 : na, "VAL-SD3", c_sd3,  1)
+
+p_pvwap = plot(show_prev ? prev_vwap : na, "P.VWAP", c_pvwap, 1, plot.style_linebr)
+p_pvhi  = plot(show_prev ? pvhi      : na, "P.VAH",  c_pvah,  1, plot.style_linebr)
+p_pvlo  = plot(show_prev ? pvlo      : na, "P.VAL",  c_pval,  1, plot.style_linebr)
+
+// ── Fills ─────────────────────────────────────────────────────────────────────
+fill(p_vhi,  p_vlo,  shade_dev  and show_sd1  ? c_fill_dev : na)
+fill(p_pvhi, p_pvlo, shade_prev and show_prev ? c_fill_prv : na)
+fill(p_vhi2, p_vlo2, shade_sd2  and show_sd2  ? c_fill_sd2 : na)
+fill(p_vhi3, p_vlo3, shade_sd3  and show_sd3  ? c_fill_sd3 : na)
+
+// ── Extension lines ───────────────────────────────────────────────────────────
+// Developing period lines track the current bar and extend to the right edge.
+var line ext_vwap_ln  = na
+var line ext_vhi_ln   = na
+var line ext_vlo_ln   = na
+
+// Previous period lines extend from the last bar to the right edge.
+var line ext_pvwap_ln = na
+var line ext_pvah_ln  = na
+var line ext_pval_ln  = na
+
+if show_ext
+    if new_period
+        if not na(ext_vwap_ln)
+            line.delete(ext_vwap_ln)
+        if not na(ext_vhi_ln)
+            line.delete(ext_vhi_ln)
+        if not na(ext_vlo_ln)
+            line.delete(ext_vlo_ln)
+        if not na(vwap)
+            ext_vwap_ln := line.new(bar_index, vwap, bar_index + 1, vwap,
+                 extend=extend.right, style=line.style_dashed, color=c_vwap, width=1)
+        if not na(vhi)
+            ext_vhi_ln := line.new(bar_index, vhi, bar_index + 1, vhi,
+                 extend=extend.right, style=line.style_dashed, color=c_vah, width=1)
+        if not na(vlo)
+            ext_vlo_ln := line.new(bar_index, vlo, bar_index + 1, vlo,
+                 extend=extend.right, style=line.style_dashed, color=c_val, width=1)
+    else
+        if not na(ext_vwap_ln) and not na(vwap)
+            line.set_x1(ext_vwap_ln, bar_index)
+            line.set_x2(ext_vwap_ln, bar_index + 1)
+            line.set_y1(ext_vwap_ln, vwap)
+            line.set_y2(ext_vwap_ln, vwap)
+        if not na(ext_vhi_ln) and not na(vhi)
+            line.set_x1(ext_vhi_ln, bar_index)
+            line.set_x2(ext_vhi_ln, bar_index + 1)
+            line.set_y1(ext_vhi_ln, vhi)
+            line.set_y2(ext_vhi_ln, vhi)
+        if not na(ext_vlo_ln) and not na(vlo)
+            line.set_x1(ext_vlo_ln, bar_index)
+            line.set_x2(ext_vlo_ln, bar_index + 1)
+            line.set_y1(ext_vlo_ln, vlo)
+            line.set_y2(ext_vlo_ln, vlo)
+
+if show_prev and barstate.islast
+    line.delete(ext_pvwap_ln)
+    line.delete(ext_pvah_ln)
+    line.delete(ext_pval_ln)
+    if not na(prev_vwap)
+        ext_pvwap_ln := line.new(bar_index, prev_vwap, bar_index + 1, prev_vwap,
+             extend=extend.right, style=line.style_dashed, color=c_pvwap, width=1)
+    if not na(pvhi)
+        ext_pvah_ln := line.new(bar_index, pvhi, bar_index + 1, pvhi,
+             extend=extend.right, style=line.style_dashed, color=c_pvah, width=1)
+    if not na(pvlo)
+        ext_pval_ln := line.new(bar_index, pvlo, bar_index + 1, pvlo,
+             extend=extend.right, style=line.style_dashed, color=c_pval, width=1)
+
+// ── Label prefixes based on effective timeframe ───────────────────────────────
+// Developing: dy=Yearly, dq=Quarterly, dm=Monthly, dw=Weekly, dd=Daily
+// Previous:   py=Yearly, pq=Quarterly, pm=Monthly, pw=Weekly, pd=Daily
+d_pfx = switch eff_tf
+    "Yearly"    => "dy"
+    "Quarterly" => "dq"
+    "Monthly"   => "dm"
+    "Weekly"    => "dw"
+    => "dd"
+
+p_pfx = switch eff_tf
+    "Yearly"    => "py"
+    "Quarterly" => "pq"
+    "Monthly"   => "pm"
+    "Weekly"    => "pw"
+    => "pd"
+
+// ── Labels ────────────────────────────────────────────────────────────────────
+var label lbl_dvwap = na
+var label lbl_dvah  = na
+var label lbl_dval  = na
+var label lbl_pvwap = na
+var label lbl_pvah  = na
+var label lbl_pval  = na
+
+if show_lbl and barstate.islast
+    vis_range = chart.right_visible_bar_time - chart.left_visible_bar_time
+    dev_x = time + int(vis_range * 0.10)
+    prv_x = time + int(vis_range * 0.20)
+
+    label.delete(lbl_dvwap)
+    label.delete(lbl_dvah)
+    label.delete(lbl_dval)
+
+    if not na(vwap)
+        lbl_dvwap := label.new(dev_x, vwap,
+             d_pfx + "VWAP " + str.tostring(vwap, format.mintick),
+             xloc=xloc.bar_time, style=label.style_label_left,
+             color=c_lbl_d_bg, textcolor=c_lbl_d_tx, size=size.small)
+    if not na(vhi)
+        lbl_dvah := label.new(dev_x, vhi,
+             d_pfx + "VAH " + str.tostring(vhi, format.mintick),
+             xloc=xloc.bar_time, style=label.style_label_left,
+             color=c_lbl_d_bg, textcolor=c_lbl_d_tx, size=size.small)
+    if not na(vlo)
+        lbl_dval := label.new(dev_x, vlo,
+             d_pfx + "VAL " + str.tostring(vlo, format.mintick),
+             xloc=xloc.bar_time, style=label.style_label_left,
+             color=c_lbl_d_bg, textcolor=c_lbl_d_tx, size=size.small)
+
+    if show_prev
+        label.delete(lbl_pvwap)
+        label.delete(lbl_pvah)
+        label.delete(lbl_pval)
+
+        if not na(prev_vwap)
+            lbl_pvwap := label.new(prv_x, prev_vwap,
+                 p_pfx + "VWAP " + str.tostring(prev_vwap, format.mintick),
+                 xloc=xloc.bar_time, style=label.style_label_left,
+                 color=c_lbl_p_bg, textcolor=c_lbl_p_tx, size=size.small)
+        if not na(pvhi)
+            lbl_pvah := label.new(prv_x, pvhi,
+                 p_pfx + "VAH " + str.tostring(pvhi, format.mintick),
+                 xloc=xloc.bar_time, style=label.style_label_left,
+                 color=c_lbl_p_bg, textcolor=c_lbl_p_tx, size=size.small)
+        if not na(pvlo)
+            lbl_pval := label.new(prv_x, pvlo,
+                 p_pfx + "VAL " + str.tostring(pvlo, format.mintick),
+                 xloc=xloc.bar_time, style=label.style_label_left,
+                 color=c_lbl_p_bg, textcolor=c_lbl_p_tx, size=size.small)
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+alertcondition(ta.cross(close, vwap),      "Price x VWAP",      "Price crossed Agg VWAP")
+alertcondition(ta.cross(close, vhi),       "Price x VAH",       "Price crossed Agg VAH (+1 SD)")
+alertcondition(ta.cross(close, vlo),       "Price x VAL",       "Price crossed Agg VAL (-1 SD)")
+alertcondition(ta.cross(close, prev_vwap), "Price x Prev VWAP", "Price crossed Previous Agg VWAP")
