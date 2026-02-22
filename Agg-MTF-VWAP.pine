@@ -1,66 +1,21 @@
 //@version=6
-indicator("Lowkeigh-MTF_VWAP", shorttitle="Lowkeigh-MTF_VWAP", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator("Lowkeigh-LTVW", shorttitle="Lowkeigh-LTVW", overlay=true, max_lines_count=500, max_labels_count=500)
 
 // ── Timeframe ─────────────────────────────────────────────────────────────────
 tf_mode = input.string("Auto", "Timeframe",
      options=["Auto", "Yearly", "Quarterly", "Monthly", "Weekly", "Daily"],
      group="Timeframe")
 
-// ── Exchange Sources ───────────────────────────────────────────────────────────
-// Dynamic Mode builds exchange symbols from the chart's base/quote currency
-// automatically. Disable to use the manual symbol inputs below instead.
-grp_src = "Exchange Sources"
-
-use_dynamic  = input.bool(true,  "Auto-detect pair from chart (Dynamic Mode)",
-     tooltip="When ON, exchange symbols are constructed automatically from the chart's base and quote currency (e.g. ETH + USDT → ETHUSDT on each exchange).\n\nWhen OFF, use the manual symbol inputs below. Useful when an exchange uses a non-standard ticker for a pair.",
-     group=grp_src)
-
-inp_binance  = input.symbol("BINANCE:BTCUSDT",  "Binance",  group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_bybit    = input.symbol("BYBIT:BTCUSDT",    "Bybit",    group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_coinbase = input.symbol("COINBASE:BTCUSD",  "Coinbase", group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF.\nIn Dynamic Mode, Coinbase quote currency is auto-converted (USDT → USD)")
-inp_kraken   = input.symbol("KRAKEN:XBTUSD",    "Kraken",   group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF.\nIn Dynamic Mode, Kraken base currency is auto-converted (BTC → XBT) and quote (USDT → USD)")
-inp_mexc     = input.symbol("MEXC:BTCUSDT",     "MEXC",     group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_okx      = input.symbol("OKX:BTCUSDT",      "OKX",      group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_kucoin   = input.symbol("KUCOIN:BTCUSDT",   "KuCoin",   group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_blofin   = input.symbol("BLOFIN:BTCUSDT",   "BloFin",   group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_bitget   = input.symbol("BITGET:BTCUSDT",   "Bitget",   group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-inp_coinex   = input.symbol("COINEX:BTCUSDT",   "CoinEx",   group=grp_src,
-     tooltip="Used only when Dynamic Mode is OFF")
-
-// ── Exchange Toggles ───────────────────────────────────────────────────────────
-grp_tog      = "Exchange Toggles"
-use_binance  = input.bool(true, "Binance",  group=grp_tog)
-use_bybit    = input.bool(true, "Bybit",    group=grp_tog)
-use_coinbase = input.bool(true, "Coinbase", group=grp_tog)
-use_kraken   = input.bool(true, "Kraken",   group=grp_tog)
-use_mexc     = input.bool(true, "MEXC",     group=grp_tog)
-use_okx      = input.bool(true, "OKX",      group=grp_tog)
-use_kucoin   = input.bool(true, "KuCoin",   group=grp_tog)
-use_blofin   = input.bool(true, "BloFin",   group=grp_tog)
-use_bitget   = input.bool(true, "Bitget",   group=grp_tog)
-use_coinex   = input.bool(true, "CoinEx",   group=grp_tog)
-
 // ── Display ───────────────────────────────────────────────────────────────────
 show_sd1   = input.bool(true,  "Show Value Area (±1 SD)",        group="Display")
-show_sd2   = input.bool(false, "Show ±SD2 Bands",                group="Display")
-sd2_mult   = input.float(2.0,  "SD2 Multiplier",  minval=0.1, step=0.1, group="Display",
-     tooltip="Custom multiplier for SD band 2 (default 2.0)")
-shade_sd2  = input.bool(false, "Shade ±SD2 Band",                group="Display")
-show_sd3   = input.bool(false, "Show ±SD3 Bands",                group="Display")
-sd3_mult   = input.float(3.0,  "SD3 Multiplier",  minval=0.1, step=0.1, group="Display",
-     tooltip="Custom multiplier for SD band 3 (default 3.0)")
-shade_sd3  = input.bool(false, "Shade ±SD3 Band",                group="Display")
-show_prev  = input.bool(true,  "Show Previous Period",            group="Display")
 shade_dev  = input.bool(true,  "Shade Developing Value Area",     group="Display")
+show_sd2   = input.bool(false, "Show ±SD2 Bands",                group="Display")
+sd2_mult   = input.float(1.5,  "SD2 Multiplier",  minval=0.1, step=0.1, group="Display",
+     tooltip="Custom multiplier for SD band 2 (default 1.5)")
+show_sd3   = input.bool(false, "Show ±SD3 Bands",                group="Display")
+sd3_mult   = input.float(2.0,  "SD3 Multiplier",  minval=0.1, step=0.1, group="Display",
+     tooltip="Custom multiplier for SD band 3 (default 2.0)")
+show_prev  = input.bool(true,  "Show Previous Period",            group="Display")
 shade_prev = input.bool(false, "Shade Previous Value Area",       group="Display")
 show_lbl   = input.bool(true,  "Show Labels",                     group="Display")
 show_ext   = input.bool(true,  "Extend Developing Lines to RHS",  group="Display")
@@ -82,9 +37,7 @@ c_vwap     = input.color(color.new(#2196F3, 0),  "VWAP",            group="Colou
 c_vah      = input.color(color.new(#4CAF50, 0),  "VAH",             group="Colours: Developing")
 c_val      = input.color(color.new(#4CAF50, 0),  "VAL",             group="Colours: Developing")
 c_sd2      = input.color(color.new(#FF9800, 20), "±SD2",            group="Colours: Developing")
-c_fill_sd2 = input.color(color.new(#FF9800, 85), "SD2 Fill",        group="Colours: Developing")
 c_sd3      = input.color(color.new(#F44336, 20), "±SD3",            group="Colours: Developing")
-c_fill_sd3 = input.color(color.new(#F44336, 85), "SD3 Fill",        group="Colours: Developing")
 c_fill_dev = input.color(color.new(#4CAF50, 85), "Value Area Fill", group="Colours: Developing")
 
 // ── Colours: Previous ─────────────────────────────────────────────────────────
@@ -107,16 +60,16 @@ _cb_quote = str.replace(_quote, "USDT", "USD")
 _kr_base  = _base == "BTC" ? "XBT" : _base
 _kr_quote = str.replace(_quote, "USDT", "USD")
 
-sym_binance  = use_dynamic ? "BINANCE:"  + _base    + _quote    : inp_binance
-sym_bybit    = use_dynamic ? "BYBIT:"    + _base    + _quote    : inp_bybit
-sym_coinbase = use_dynamic ? "COINBASE:" + _base    + _cb_quote : inp_coinbase
-sym_kraken   = use_dynamic ? "KRAKEN:"   + _kr_base + _kr_quote : inp_kraken
-sym_mexc     = use_dynamic ? "MEXC:"     + _base    + _quote    : inp_mexc
-sym_okx      = use_dynamic ? "OKX:"      + _base    + _quote    : inp_okx
-sym_kucoin   = use_dynamic ? "KUCOIN:"   + _base    + _quote    : inp_kucoin
-sym_blofin   = use_dynamic ? "BLOFIN:"   + _base    + _quote    : inp_blofin
-sym_bitget   = use_dynamic ? "BITGET:"   + _base    + _quote    : inp_bitget
-sym_coinex   = use_dynamic ? "COINEX:"   + _base    + _quote    : inp_coinex
+sym_binance  = "BINANCE:"  + _base    + _quote
+sym_bybit    = "BYBIT:"    + _base    + _quote
+sym_coinbase = "COINBASE:" + _base    + _cb_quote
+sym_kraken   = "KRAKEN:"   + _kr_base + _kr_quote
+sym_mexc     = "MEXC:"     + _base    + _quote
+sym_okx      = "OKX:"      + _base    + _quote
+sym_kucoin   = "KUCOIN:"   + _base    + _quote
+sym_blofin   = "BLOFIN:"   + _base    + _quote
+sym_bitget   = "BITGET:"   + _base    + _quote
+sym_coinex   = "COINEX:"   + _base    + _quote
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 [tp_bnb, vol_bnb] = request.security(sym_binance,  timeframe.period, [hlc3, volume], ignore_invalid_symbol=true)
@@ -135,23 +88,23 @@ f_vol(ena, v)     => ena and not na(v) ? nz(v) : 0.0
 f_tpv(ena, t, v)  => ena and not na(v) ? nz(t) * nz(v) : 0.0
 f_tp2v(ena, t, v) => ena and not na(v) ? nz(t) * nz(t) * nz(v) : 0.0
 
-agg_vol  = f_vol (use_binance,  vol_bnb)           + f_vol (use_bybit,    vol_byb)           +
-           f_vol (use_coinbase, vol_cb)             + f_vol (use_kraken,   vol_kr)            +
-           f_vol (use_mexc,     vol_mx)             + f_vol (use_okx,      vol_okx)           +
-           f_vol (use_kucoin,   vol_kuc)            + f_vol (use_blofin,   vol_blf)           +
-           f_vol (use_bitget,   vol_btg)            + f_vol (use_coinex,   vol_cex)
+agg_vol  = f_vol (true, vol_bnb)           + f_vol (true, vol_byb)           +
+           f_vol (true, vol_cb)             + f_vol (true, vol_kr)            +
+           f_vol (true, vol_mx)             + f_vol (true, vol_okx)           +
+           f_vol (true, vol_kuc)            + f_vol (true, vol_blf)           +
+           f_vol (true, vol_btg)            + f_vol (true, vol_cex)
 
-agg_tpv  = f_tpv (use_binance,  tp_bnb, vol_bnb)   + f_tpv (use_bybit,    tp_byb, vol_byb)   +
-           f_tpv (use_coinbase, tp_cb,  vol_cb)     + f_tpv (use_kraken,   tp_kr,  vol_kr)    +
-           f_tpv (use_mexc,     tp_mx,  vol_mx)     + f_tpv (use_okx,      tp_okx, vol_okx)   +
-           f_tpv (use_kucoin,   tp_kuc, vol_kuc)    + f_tpv (use_blofin,   tp_blf, vol_blf)   +
-           f_tpv (use_bitget,   tp_btg, vol_btg)    + f_tpv (use_coinex,   tp_cex, vol_cex)
+agg_tpv  = f_tpv (true, tp_bnb, vol_bnb)   + f_tpv (true, tp_byb, vol_byb)   +
+           f_tpv (true, tp_cb,  vol_cb)     + f_tpv (true, tp_kr,  vol_kr)    +
+           f_tpv (true, tp_mx,  vol_mx)     + f_tpv (true, tp_okx, vol_okx)   +
+           f_tpv (true, tp_kuc, vol_kuc)    + f_tpv (true, tp_blf, vol_blf)   +
+           f_tpv (true, tp_btg, vol_btg)    + f_tpv (true, tp_cex, vol_cex)
 
-agg_tp2v = f_tp2v(use_binance,  tp_bnb, vol_bnb)   + f_tp2v(use_bybit,    tp_byb, vol_byb)   +
-           f_tp2v(use_coinbase, tp_cb,  vol_cb)     + f_tp2v(use_kraken,   tp_kr,  vol_kr)    +
-           f_tp2v(use_mexc,     tp_mx,  vol_mx)     + f_tp2v(use_okx,      tp_okx, vol_okx)   +
-           f_tp2v(use_kucoin,   tp_kuc, vol_kuc)    + f_tp2v(use_blofin,   tp_blf, vol_blf)   +
-           f_tp2v(use_bitget,   tp_btg, vol_btg)    + f_tp2v(use_coinex,   tp_cex, vol_cex)
+agg_tp2v = f_tp2v(true, tp_bnb, vol_bnb)   + f_tp2v(true, tp_byb, vol_byb)   +
+           f_tp2v(true, tp_cb,  vol_cb)     + f_tp2v(true, tp_kr,  vol_kr)    +
+           f_tp2v(true, tp_mx,  vol_mx)     + f_tp2v(true, tp_okx, vol_okx)   +
+           f_tp2v(true, tp_kuc, vol_kuc)    + f_tp2v(true, tp_blf, vol_blf)   +
+           f_tp2v(true, tp_btg, vol_btg)    + f_tp2v(true, tp_cex, vol_cex)
 
 // ── Effective timeframe ───────────────────────────────────────────────────────
 tf_secs = timeframe.in_seconds()
@@ -246,8 +199,6 @@ p_rv_val  = plot(rv_val,  "rvVAL",  c_rv_val,  1)
 // ── Fills ─────────────────────────────────────────────────────────────────────
 fill(p_vhi,    p_vlo,    shade_dev  and show_sd1               ? c_fill_dev : na)
 fill(p_pvhi,   p_pvlo,   shade_prev and show_prev              ? c_fill_prv : na)
-fill(p_vhi2,   p_vlo2,   shade_sd2  and show_sd2               ? c_fill_sd2 : na)
-fill(p_vhi3,   p_vlo3,   shade_sd3  and show_sd3               ? c_fill_sd3 : na)
 fill(p_rv_vah, p_rv_val, rv_shade   and rv_show and rv_show_sd ? c_rv_fill  : na)
 
 // ── Extension lines ───────────────────────────────────────────────────────────
