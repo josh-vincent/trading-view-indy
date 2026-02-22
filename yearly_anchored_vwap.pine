@@ -87,7 +87,7 @@ var float cum_tp2v = 0.0
 var float prev_vwap = na
 var float prev_sd   = na
 
-tp = close
+tp = hlc3  // Standard VWAP typical price: (High + Low + Close) / 3
 
 if new_period
     if cum_vol > 0.0
