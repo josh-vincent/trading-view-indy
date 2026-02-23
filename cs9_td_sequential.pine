@@ -1,5 +1,5 @@
 // =============================================================================
-// CS9 — Count-Step Display (TD Sequential Style)
+// Lowkeigh-9s — Count-Step Display (TD Sequential Style)
 // Reverse-engineered from: 16 "Shapes" binary columns in CS9 CSV export
 //
 // CONFIDENCE: ~35% (revised down after backtest)
@@ -39,7 +39,7 @@
 // =============================================================================
 
 //@version=6
-indicator("CS9 — Count-Step Display", shorttitle="CS9", overlay=true)
+indicator("Lowkeigh-9s", shorttitle="Lowkeigh-9s", overlay=true, max_labels_count=500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 var string g_setup = "Setup"
@@ -48,8 +48,6 @@ var string g_disp  = "Display"
 
 setup_lb     = input.int(4,    "Setup lookback (bars)",   minval=1, maxval=10, group=g_setup,
                  tooltip="Comparison: close vs close[lookback]. TD default = 4.")
-reset_on_9   = input.bool(true, "Reset count after 9",   group=g_setup,
-                 tooltip="If true, count resets to 0 after reaching 9 (setup cycles). If false, continues past 9.")
 show_9       = input.bool(true, "Show Setup 9 label",      group=g_setup)
 show_cd      = input.bool(true, "Show Countdown progress", group=g_cd)
 
@@ -58,6 +56,23 @@ c_sell9  = input.color(color.new(#D50000, 0),  "Sell Setup 9",    group=g_disp)
 c_num    = input.color(color.new(#B0BEC5, 0),  "Count 1–8",       group=g_disp)
 c_cd_buy = input.color(color.new(#00BCD4, 0),  "Buy Countdown",   group=g_disp)
 c_cd_sel = input.color(color.new(#FF6F00, 0),  "Sell Countdown",  group=g_disp)
+txt_size_input = input.string("small", "Text size", options=["tiny", "small", "normal", "large", "huge"], group=g_disp,
+                 tooltip="Size of count numbers on chart. Default is 'small'.")
+
+// ── Text size helpers ─────────────────────────────────────────────────────────
+// Convert string input to Pine Script size constant
+_txt_size = txt_size_input == "tiny"   ? size.tiny   :
+            txt_size_input == "small"  ? size.small  :
+            txt_size_input == "normal" ? size.normal :
+            txt_size_input == "large"  ? size.large  :
+            txt_size_input == "huge"   ? size.huge   : size.small
+
+// Setup 9 label is always one step larger than the selected size
+_txt_size_9 = txt_size_input == "tiny"   ? size.small  :
+              txt_size_input == "small"  ? size.normal :
+              txt_size_input == "normal" ? size.large  :
+              txt_size_input == "large"  ? size.huge   :
+              txt_size_input == "huge"   ? size.huge   : size.normal
 
 // ── Setup counting ────────────────────────────────────────────────────────────
 // Buy  setup: close < close[setup_lb]  → bearish exhaustion / potential bounce
@@ -89,12 +104,17 @@ else
 buy_setup_9  = buy_count  == 9
 sell_setup_9 = sell_count == 9
 
-// Reset after 9 if configured (allows recycling: count restarts at 1)
-if reset_on_9
-    if buy_count  > 9
-        buy_count  := 1
-    if sell_count > 9
-        sell_count := 1
+// Perfect 9 detection (calculated before reset, while count == 9)
+// A "perfect" buy setup 9 occurs when the close of bar 8 or bar 9 is <=
+// the low of bar 6 or bar 7 of the setup (standard TD Sequential definition).
+_perf_buy_9  = buy_count  == 9 and (close <= low[2] or close <= low[3] or close[1] <= low[2] or close[1] <= low[3])
+_perf_sell_9 = sell_count == 9 and (close >= high[2] or close >= high[3] or close[1] >= high[2] or close[1] >= high[3])
+
+// Count always restarts from 1 on the next qualifying bar after completing 9
+if buy_count > 9
+    buy_count := 1
+if sell_count > 9
+    sell_count := 1
 
 // ── Countdown ─────────────────────────────────────────────────────────────────
 // TD Buy Countdown  : close <= low[2]   — fires after a buy setup completes
@@ -128,49 +148,49 @@ if in_sell_cd and close >= high[2]
         in_sell_cd := false
         sell_cd    := 0
 
-// ── Perfect 9 detection ───────────────────────────────────────────────────────
-// A "perfect" buy setup 9 occurs when the close of bar 8 or bar 9 is <=
-// the low of bar 6 or bar 7 of the setup (standard TD Sequential definition).
-// Approximated using bar offsets assuming consecutive qualifying bars:
-//   bar 9 = current, bar 8 = [1], bar 7 = [2], bar 6 = [3]
-_perf_buy_9  = buy_count  == 9 and (close <= low[2] or close <= low[3] or close[1] <= low[2] or close[1] <= low[3])
-_perf_sell_9 = sell_count == 9 and (close >= high[2] or close >= high[3] or close[1] >= high[2] or close[1] >= high[3])
-
 // ── Labels — Setup counts ─────────────────────────────────────────────────────
+// Labels are pinned above/below bars (yloc.abovebar / yloc.belowbar) so they
+// appear at a consistent visual offset from candles rather than floating at
+// exact price levels.
 // Show counts 1, 8, 9 only — plain number text, no dots or shapes
-// Add "P" to 9 when it is a perfect setup
 
 if buy_count == 1
-    label.new(bar_index, low, "1",
+    label.new(bar_index, na, "1",
+      yloc=yloc.belowbar,
       color=color.new(color.black, 100), textcolor=c_num,
-      style=label.style_none, size=size.tiny)
+      style=label.style_none, size=_txt_size)
 
 if buy_count == 8
-    label.new(bar_index, low, "8",
+    label.new(bar_index, na, "8",
+      yloc=yloc.belowbar,
       color=color.new(color.black, 100), textcolor=c_num,
-      style=label.style_none, size=size.tiny)
+      style=label.style_none, size=_txt_size)
 
 if show_9 and buy_count == 9
     _lbl = _perf_buy_9 ? "9P" : "9"
-    label.new(bar_index, low, _lbl,
+    label.new(bar_index, na, _lbl,
+      yloc=yloc.belowbar,
       color=color.new(color.black, 100), textcolor=c_buy9,
-      style=label.style_none, size=size.small)
+      style=label.style_none, size=_txt_size_9)
 
 if sell_count == 1
-    label.new(bar_index, high, "1",
+    label.new(bar_index, na, "1",
+      yloc=yloc.abovebar,
       color=color.new(color.black, 100), textcolor=c_num,
-      style=label.style_none, size=size.tiny)
+      style=label.style_none, size=_txt_size)
 
 if sell_count == 8
-    label.new(bar_index, high, "8",
+    label.new(bar_index, na, "8",
+      yloc=yloc.abovebar,
       color=color.new(color.black, 100), textcolor=c_num,
-      style=label.style_none, size=size.tiny)
+      style=label.style_none, size=_txt_size)
 
 if show_9 and sell_count == 9
     _lbl = _perf_sell_9 ? "9P" : "9"
-    label.new(bar_index, high, _lbl,
+    label.new(bar_index, na, _lbl,
+      yloc=yloc.abovebar,
       color=color.new(color.black, 100), textcolor=c_sell9,
-      style=label.style_none, size=size.small)
+      style=label.style_none, size=_txt_size_9)
 
 // ── Labels — Countdown counts ─────────────────────────────────────────────────
 // Countdown bars are labeled as cd+9 (first countdown bar = 10, second = 11, …)
@@ -179,19 +199,21 @@ if show_9 and sell_count == 9
 if show_cd and in_buy_cd and buy_cd >= 1
     _cd_num = buy_cd + 9
     if _cd_num <= 20
-        label.new(bar_index, low, str.tostring(_cd_num),
+        label.new(bar_index, na, str.tostring(_cd_num),
+          yloc=yloc.belowbar,
           color=color.new(color.black, 100), textcolor=c_cd_buy,
-          style=label.style_none, size=size.tiny)
+          style=label.style_none, size=_txt_size)
 
 if show_cd and in_sell_cd and sell_cd >= 1
     _cd_num = sell_cd + 9
     if _cd_num <= 20
-        label.new(bar_index, high, str.tostring(_cd_num),
+        label.new(bar_index, na, str.tostring(_cd_num),
+          yloc=yloc.abovebar,
           color=color.new(color.black, 100), textcolor=c_cd_sel,
-          style=label.style_none, size=size.tiny)
+          style=label.style_none, size=_txt_size)
 
 // ── Alerts ───────────────────────────────────────────────────────────────────
-alertcondition(buy_setup_9,   "CS9 Buy Setup 9",        "CS9: Buy Setup 9 complete — potential reversal up")
-alertcondition(sell_setup_9,  "CS9 Sell Setup 9",       "CS9: Sell Setup 9 complete — potential reversal down")
-alertcondition(sell_cd == 13, "CS9 Sell Countdown 13",  "CS9: Sell Countdown 13 — high-conviction bearish exhaustion")
-alertcondition(buy_cd  == 13, "CS9 Buy Countdown 13",   "CS9: Buy Countdown 13 — high-conviction bullish exhaustion")
+alertcondition(buy_setup_9,   "Lowkeigh-9s Buy Setup 9",        "Lowkeigh-9s: Buy Setup 9 complete — potential reversal up")
+alertcondition(sell_setup_9,  "Lowkeigh-9s Sell Setup 9",       "Lowkeigh-9s: Sell Setup 9 complete — potential reversal down")
+alertcondition(sell_cd == 13, "Lowkeigh-9s Sell Countdown 13",  "Lowkeigh-9s: Sell Countdown 13 — high-conviction bearish exhaustion")
+alertcondition(buy_cd  == 13, "Lowkeigh-9s Buy Countdown 13",   "Lowkeigh-9s: Buy Countdown 13 — high-conviction bullish exhaustion")
