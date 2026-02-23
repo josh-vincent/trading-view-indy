@@ -50,18 +50,14 @@ setup_lb     = input.int(4,    "Setup lookback (bars)",   minval=1, maxval=10, g
                  tooltip="Comparison: close vs close[lookback]. TD default = 4.")
 reset_on_9   = input.bool(true, "Reset count after 9",   group=g_setup,
                  tooltip="If true, count resets to 0 after reaching 9 (setup cycles). If false, continues past 9.")
-show_all     = input.bool(false, "Show all count steps 1-8", group=g_setup,
-                 tooltip="Label every qualifying bar with its count number. If off, only shows 9.")
 show_9       = input.bool(true, "Show Setup 9 label",      group=g_setup)
 show_cd      = input.bool(true, "Show Countdown progress", group=g_cd)
-show_cd_13   = input.bool(true, "Show Countdown 13 alert", group=g_cd)
 
 c_buy9   = input.color(color.new(#00C853, 0),  "Buy Setup 9",     group=g_disp)
 c_sell9  = input.color(color.new(#D50000, 0),  "Sell Setup 9",    group=g_disp)
 c_num    = input.color(color.new(#B0BEC5, 0),  "Count 1–8",       group=g_disp)
 c_cd_buy = input.color(color.new(#00BCD4, 0),  "Buy Countdown",   group=g_disp)
 c_cd_sel = input.color(color.new(#FF6F00, 0),  "Sell Countdown",  group=g_disp)
-c_cd_13  = input.color(color.new(#AA00FF, 0),  "Countdown 13",    group=g_disp)
 
 // ── Setup counting ────────────────────────────────────────────────────────────
 // Buy  setup: close < close[setup_lb]  → bearish exhaustion / potential bounce
@@ -132,70 +128,67 @@ if in_sell_cd and close >= high[2]
         in_sell_cd := false
         sell_cd    := 0
 
-// ── Count-step display (matches CSV sN column interpretation) ─────────────────
-// Each qualifying bar shows its CURRENT COUNT NUMBER as a small label.
-// Only certain counts are shown (matching the CSV pattern: 1,2,3,5,9).
-// Counts 4, 6, 7, 8 advance silently (no label) — common in TD display variants.
-_show_count_buy  = show_all or (buy_count  == 1 or buy_count  == 2 or buy_count  == 3 or buy_count  == 5)
-_show_count_sell = show_all or (sell_count == 1 or sell_count == 2 or sell_count == 3 or sell_count == 5)
+// ── Perfect 9 detection ───────────────────────────────────────────────────────
+// A "perfect" buy setup 9 occurs when the close of bar 8 or bar 9 is <=
+// the low of bar 6 or bar 7 of the setup (standard TD Sequential definition).
+// Approximated using bar offsets assuming consecutive qualifying bars:
+//   bar 9 = current, bar 8 = [1], bar 7 = [2], bar 6 = [3]
+_perf_buy_9  = buy_count  == 9 and (close <= low[2] or close <= low[3] or close[1] <= low[2] or close[1] <= low[3])
+_perf_sell_9 = sell_count == 9 and (close >= high[2] or close >= high[3] or close[1] >= high[2] or close[1] >= high[3])
 
-// ── Plots — Count step labels ─────────────────────────────────────────────────
-// Intermediate counts 1-8 (small, grey dots — same behavior as CSV s1/s2/s4)
-plotshape(_show_count_buy and buy_count > 0 and buy_count < 9,
-  title="Buy Count 1-8", style=shape.circle, location=location.belowbar,
-  color=c_num, textcolor=color.black, size=size.tiny)
+// ── Labels — Setup counts ─────────────────────────────────────────────────────
+// Show counts 1, 8, 9 only — plain number text, no dots or shapes
+// Add "P" to 9 when it is a perfect setup
 
-plotshape(_show_count_sell and sell_count > 0 and sell_count < 9,
-  title="Sell Count 1-8", style=shape.circle, location=location.abovebar,
-  color=c_num, textcolor=color.black, size=size.tiny)
-
-// Number labels on qualifying bars (when show_all is true)
-if show_all and buy_count > 0 and buy_count < 9
-    label.new(bar_index, low, str.tostring(buy_count),
-      color=color.new(c_num, 80), textcolor=c_num,
+if buy_count == 1
+    label.new(bar_index, low, "1",
+      color=color.transparent, textcolor=c_num,
       style=label.style_none, size=size.tiny)
 
-if show_all and sell_count > 0 and sell_count < 9
-    label.new(bar_index, high, str.tostring(sell_count),
-      color=color.new(c_num, 80), textcolor=c_num,
+if buy_count == 8
+    label.new(bar_index, low, "8",
+      color=color.transparent, textcolor=c_num,
       style=label.style_none, size=size.tiny)
 
-// Buy Setup 9 — green "9" below bar  (= s8 in CSV when buy context)
-plotshape(show_9 and buy_setup_9,
-  title="Buy Setup 9", style=shape.labelup, location=location.belowbar,
-  color=c_buy9, textcolor=color.white, text="9", size=size.small)
+if show_9 and buy_count == 9
+    _lbl = _perf_buy_9 ? "9P" : "9"
+    label.new(bar_index, low, _lbl,
+      color=color.transparent, textcolor=c_buy9,
+      style=label.style_none, size=size.small)
 
-// Sell Setup 9 — red "9" above bar  (= s8 in CSV when sell context)
-plotshape(show_9 and sell_setup_9,
-  title="Sell Setup 9", style=shape.labeldown, location=location.abovebar,
-  color=c_sell9, textcolor=color.white, text="9", size=size.small)
-
-// ── Plots — Countdown labels ──────────────────────────────────────────────────
-// Buy countdown progress: bars matching s9-s13 pattern (counts 10-14)
-plotshape(show_cd and in_buy_cd and buy_cd >= 1 and buy_cd <= 12,
-  title="Buy CD 1-12", style=shape.circle, location=location.belowbar,
-  color=c_cd_buy, textcolor=color.white, size=size.tiny)
-
-// Sell countdown progress
-plotshape(show_cd and in_sell_cd and sell_cd >= 1 and sell_cd <= 12,
-  title="Sell CD 1-12", style=shape.circle, location=location.abovebar,
-  color=c_cd_sel, textcolor=color.white, size=size.tiny)
-
-// Countdown 13 complete — highest conviction  (= s13 in CSV)
-plotshape(show_cd_13 and (buy_cd == 13 or sell_cd == 13),
-  title="CD 13 Complete", style=shape.labeldown, location=location.abovebar,
-  color=c_cd_13, textcolor=color.white, text="13", size=size.normal)
-
-// Number labels on countdown bars
-if show_cd and in_buy_cd and buy_cd > 0
-    label.new(bar_index, low, str.tostring(buy_cd),
-      color=color.new(c_cd_buy, 60), textcolor=c_cd_buy,
+if sell_count == 1
+    label.new(bar_index, high, "1",
+      color=color.transparent, textcolor=c_num,
       style=label.style_none, size=size.tiny)
 
-if show_cd and in_sell_cd and sell_cd > 0
-    label.new(bar_index, high, str.tostring(sell_cd),
-      color=color.new(c_cd_sel, 60), textcolor=c_cd_sel,
+if sell_count == 8
+    label.new(bar_index, high, "8",
+      color=color.transparent, textcolor=c_num,
       style=label.style_none, size=size.tiny)
+
+if show_9 and sell_count == 9
+    _lbl = _perf_sell_9 ? "9P" : "9"
+    label.new(bar_index, high, _lbl,
+      color=color.transparent, textcolor=c_sell9,
+      style=label.style_none, size=size.small)
+
+// ── Labels — Countdown counts ─────────────────────────────────────────────────
+// Countdown bars are labeled as cd+9 (first countdown bar = 10, second = 11, …)
+// Show counts 10–20 only (buy_cd / sell_cd values 1–11)
+
+if show_cd and in_buy_cd and buy_cd >= 1
+    _cd_num = buy_cd + 9
+    if _cd_num <= 20
+        label.new(bar_index, low, str.tostring(_cd_num),
+          color=color.transparent, textcolor=c_cd_buy,
+          style=label.style_none, size=size.tiny)
+
+if show_cd and in_sell_cd and sell_cd >= 1
+    _cd_num = sell_cd + 9
+    if _cd_num <= 20
+        label.new(bar_index, high, str.tostring(_cd_num),
+          color=color.transparent, textcolor=c_cd_sel,
+          style=label.style_none, size=size.tiny)
 
 // ── Alerts ───────────────────────────────────────────────────────────────────
 alertcondition(buy_setup_9,   "CS9 Buy Setup 9",        "CS9: Buy Setup 9 complete — potential reversal up")
