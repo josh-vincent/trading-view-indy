@@ -38,7 +38,7 @@
 // display it per bar. "9" fires on the 9th qualifying bar in a run.
 // =============================================================================
 
-//@version=5
+//@version=6
 indicator("CS9 — Count-Step Display", shorttitle="CS9", overlay=true)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
@@ -142,34 +142,34 @@ _perf_sell_9 = sell_count == 9 and (close >= high[2] or close >= high[3] or clos
 
 if buy_count == 1
     label.new(bar_index, low, "1",
-      color=color.transparent, textcolor=c_num,
+      color=color.new(color.black, 100), textcolor=c_num,
       style=label.style_none, size=size.tiny)
 
 if buy_count == 8
     label.new(bar_index, low, "8",
-      color=color.transparent, textcolor=c_num,
+      color=color.new(color.black, 100), textcolor=c_num,
       style=label.style_none, size=size.tiny)
 
 if show_9 and buy_count == 9
     _lbl = _perf_buy_9 ? "9P" : "9"
     label.new(bar_index, low, _lbl,
-      color=color.transparent, textcolor=c_buy9,
+      color=color.new(color.black, 100), textcolor=c_buy9,
       style=label.style_none, size=size.small)
 
 if sell_count == 1
     label.new(bar_index, high, "1",
-      color=color.transparent, textcolor=c_num,
+      color=color.new(color.black, 100), textcolor=c_num,
       style=label.style_none, size=size.tiny)
 
 if sell_count == 8
     label.new(bar_index, high, "8",
-      color=color.transparent, textcolor=c_num,
+      color=color.new(color.black, 100), textcolor=c_num,
       style=label.style_none, size=size.tiny)
 
 if show_9 and sell_count == 9
     _lbl = _perf_sell_9 ? "9P" : "9"
     label.new(bar_index, high, _lbl,
-      color=color.transparent, textcolor=c_sell9,
+      color=color.new(color.black, 100), textcolor=c_sell9,
       style=label.style_none, size=size.small)
 
 // ── Labels — Countdown counts ─────────────────────────────────────────────────
@@ -180,14 +180,14 @@ if show_cd and in_buy_cd and buy_cd >= 1
     _cd_num = buy_cd + 9
     if _cd_num <= 20
         label.new(bar_index, low, str.tostring(_cd_num),
-          color=color.transparent, textcolor=c_cd_buy,
+          color=color.new(color.black, 100), textcolor=c_cd_buy,
           style=label.style_none, size=size.tiny)
 
 if show_cd and in_sell_cd and sell_cd >= 1
     _cd_num = sell_cd + 9
     if _cd_num <= 20
         label.new(bar_index, high, str.tostring(_cd_num),
-          color=color.transparent, textcolor=c_cd_sel,
+          color=color.new(color.black, 100), textcolor=c_cd_sel,
           style=label.style_none, size=size.tiny)
 
 // ── Alerts ───────────────────────────────────────────────────────────────────
