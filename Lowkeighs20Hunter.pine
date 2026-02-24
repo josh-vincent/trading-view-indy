@@ -64,7 +64,17 @@ if htf_new_bar
     float gap_size = math.abs(htf_open - htf_prev_close)
     bool  is_bull  = htf_open > htf_prev_close
     bool  is_bear  = htf_open < htf_prev_close
-    bool  has_gap  = gap_size >= min_gap and (is_bull or is_bear)
+
+    // Only flag gaps that formed while CME was closed (weekends / public holidays).
+    // Normal H4 bars are ~4 hours apart; the daily 1-hour maintenance window may
+    // extend a transition to ~5 hours at most.  CME weekend closure is ~49 hours
+    // and holiday closures are ~24-28 hours.  A threshold of 8 hours safely
+    // excludes every normal intra-week bar transition while capturing all CME
+    // closure gaps.  Guard against the very first bar where htf_time[1] is na.
+    int  cme_time_diff_ms = na(htf_time[1]) ? 0 : (int(htf_time) - int(htf_time[1]))
+    bool is_cme_gap       = cme_time_diff_ms > 8 * 60 * 60 * 1000  // > 8 hours in ms
+
+    bool  has_gap  = gap_size >= min_gap and (is_bull or is_bear) and is_cme_gap
 
     if has_gap
         float  top_price = is_bull ? htf_open       : htf_prev_close
