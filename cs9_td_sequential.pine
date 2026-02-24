@@ -61,18 +61,22 @@ txt_size_input = input.string("small", "Text size", options=["tiny", "small", "n
 
 // ── Text size helpers ─────────────────────────────────────────────────────────
 // Convert string input to Pine Script size constant
-_txt_size = txt_size_input == "tiny"   ? size.tiny   :
-            txt_size_input == "small"  ? size.small  :
-            txt_size_input == "normal" ? size.normal :
-            txt_size_input == "large"  ? size.large  :
-            txt_size_input == "huge"   ? size.huge   : size.small
+_txt_size = switch txt_size_input
+    "tiny"   => size.tiny
+    "small"  => size.small
+    "normal" => size.normal
+    "large"  => size.large
+    "huge"   => size.huge
+    => size.small
 
 // Setup 9 label is always one step larger than the selected size
-_txt_size_9 = txt_size_input == "tiny"   ? size.small  :
-              txt_size_input == "small"  ? size.normal :
-              txt_size_input == "normal" ? size.large  :
-              txt_size_input == "large"  ? size.huge   :
-              txt_size_input == "huge"   ? size.huge   : size.normal
+_txt_size_9 = switch txt_size_input
+    "tiny"   => size.small
+    "small"  => size.normal
+    "normal" => size.large
+    "large"  => size.huge
+    "huge"   => size.huge
+    => size.normal
 
 // ── Setup counting ────────────────────────────────────────────────────────────
 // Buy  setup: close < close[setup_lb]  → bearish exhaustion / potential bounce
@@ -110,11 +114,8 @@ sell_setup_9 = sell_count == 9
 _perf_buy_9  = buy_count  == 9 and (close <= low[2] or close <= low[3] or close[1] <= low[2] or close[1] <= low[3])
 _perf_sell_9 = sell_count == 9 and (close >= high[2] or close >= high[3] or close[1] >= high[2] or close[1] >= high[3])
 
-// Count always restarts from 1 on the next qualifying bar after completing 9
-if buy_count > 9
-    buy_count := 1
-if sell_count > 9
-    sell_count := 1
+// Count continues past 9; only resets to 0 naturally when the condition fails
+// (handled in the buy_cond/sell_cond/else block above)
 
 // ── Countdown ─────────────────────────────────────────────────────────────────
 // TD Buy Countdown  : close <= low[2]   — fires after a buy setup completes
