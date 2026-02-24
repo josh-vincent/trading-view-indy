@@ -78,6 +78,15 @@ _txt_size_9 = switch txt_size_input
     "huge"   => size.huge
     => size.normal
 
+// ── State variables ───────────────────────────────────────────────────────────
+// Declared up front so countdown flags can be cancelled inside the counting block
+var int  buy_count  = 0
+var int  sell_count = 0
+var bool in_buy_cd  = false
+var bool in_sell_cd = false
+var int  buy_cd     = 0
+var int  sell_cd    = 0
+
 // ── Setup counting ────────────────────────────────────────────────────────────
 // Buy  setup: close < close[setup_lb]  → bearish exhaustion / potential bounce
 // Sell setup: close > close[setup_lb]  → bullish exhaustion / potential top
@@ -87,19 +96,23 @@ _txt_size_9 = switch txt_size_input
 //       However, the 9-consecutive-qualifying-bar rule had zero matches in
 //       the 20-row sample, suggesting a sliding/windowed variant may be in use.
 //       This implementation uses the same per-bar condition and tracks the count.
-var int buy_count  = 0
-var int sell_count = 0
 
 buy_cond  = close < close[setup_lb]
 sell_cond = close > close[setup_lb]
 
-// Increment count on qualifying bar; reset opposing count
+// Increment count on qualifying bar; reset opposing count and cancel opposing countdown.
+// A qualifying bar in one direction immediately ends any active countdown in the other
+// direction — there must never be labels on both sides of the same candle.
 if buy_cond
     buy_count  += 1
     sell_count := 0
+    in_sell_cd := false
+    sell_cd    := 0
 else if sell_cond
     sell_count += 1
     buy_count  := 0
+    in_buy_cd  := false
+    buy_cd     := 0
 else
     buy_count  := 0
     sell_count := 0
@@ -114,16 +127,18 @@ sell_setup_9 = sell_count == 9
 _perf_buy_9  = buy_count  == 9 and (close <= low[2] or close <= low[3] or close[1] <= low[2] or close[1] <= low[3])
 _perf_sell_9 = sell_count == 9 and (close >= high[2] or close >= high[3] or close[1] >= high[2] or close[1] >= high[3])
 
+// Perfect 8 detection: bar 8's close already reaches bars 6/7 extreme.
+// A "perfect" buy 8 occurs when bar 8's close is at or below bar 6 or 7's low.
+// A "perfect" sell 8 occurs when bar 8's close is at or above bar 6 or 7's high.
+_perf_buy_8  = buy_count  == 8 and (close <= low[1] or close <= low[2])
+_perf_sell_8 = sell_count == 8 and (close >= high[1] or close >= high[2])
+
 // Count continues past 9; only resets to 0 naturally when the condition fails
 // (handled in the buy_cond/sell_cond/else block above)
 
 // ── Countdown ─────────────────────────────────────────────────────────────────
 // TD Buy Countdown  : close <= low[2]   — fires after a buy setup completes
 // TD Sell Countdown : close >= high[2]  — fires after a sell setup completes
-var bool in_buy_cd  = false
-var bool in_sell_cd = false
-var int  buy_cd     = 0
-var int  sell_cd    = 0
 
 // Activate countdown on setup 9 completion
 if buy_setup_9
@@ -162,9 +177,9 @@ if buy_count == 1
       style=label.style_none, size=_txt_size)
 
 if buy_count == 8
-    label.new(bar_index, na, "8",
+    label.new(bar_index, na, _perf_buy_8 ? "8P" : "8",
       yloc=yloc.belowbar,
-      color=color.new(color.black, 100), textcolor=c_num,
+      color=color.new(color.black, 100), textcolor=_perf_buy_8 ? c_buy9 : c_num,
       style=label.style_none, size=_txt_size)
 
 if show_9 and buy_count == 9
@@ -181,9 +196,9 @@ if sell_count == 1
       style=label.style_none, size=_txt_size)
 
 if sell_count == 8
-    label.new(bar_index, na, "8",
+    label.new(bar_index, na, _perf_sell_8 ? "8P" : "8",
       yloc=yloc.abovebar,
-      color=color.new(color.black, 100), textcolor=c_num,
+      color=color.new(color.black, 100), textcolor=_perf_sell_8 ? c_sell9 : c_num,
       style=label.style_none, size=_txt_size)
 
 if show_9 and sell_count == 9
