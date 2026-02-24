@@ -397,3 +397,117 @@ for i, r in enumerate(new_year_rows):
     print(f"         | (H+L+C)/3={tp_hlc3:.4f} | (O+H+L+C)/4={tp_ohlc4:.4f} | (H+L+2C)/4={tp_hlc3_2c:.4f}")
     print(f"         | actual_VWAP={r[5]:.4f} actual_VAH={r[6]:.4f} actual_VAL={r[7]:.4f}")
     print()
+
+# ─────────────────────────────────────────────────────────────
+# BACKTEST 4: Gap Hunter — CME Session Gap Detection
+# ─────────────────────────────────────────────────────────────
+print("=" * 60)
+print("BACKTEST 4: Gap Hunter - CME Session Gap Detection")
+print("=" * 60)
+
+# CME BTC1! H4 bar structure:
+#   - Normal weekday bars  : ~4 hours apart (14 400 s), at most ~5 h near
+#     the daily 1-hour maintenance window (4 PM–5 PM CT).
+#   - Weekend closure      : Friday 4 PM CT → Sunday 5 PM CT (~49 hours).
+#   - Public holiday       : ~24–28 hours.
+#
+# Fix: only flag gaps where consecutive H4 bar open times differ > 8 hours.
+# This safely excludes every intra-week transition while capturing all CME
+# closure gaps.
+
+H4_S              = 4  * 3600   # Normal H4 interval  (seconds)
+MAINT_EXTRA_S     = 1  * 3600   # Extra 1-hour from maintenance window
+WEEKEND_S         = 49 * 3600   # CME weekend closure (~49 hours)
+HOLIDAY_S         = 28 * 3600   # CME holiday closure (~28 hours)
+CME_GAP_THRESHOLD = 8  * 3600   # Detection threshold  (8 hours)
+MIN_GAP_USD       = 50.0        # Minimum price gap (USD) to flag
+
+# Synthetic BTC1! H4 bars (open_time_unix, prev_close, bar_open, description)
+# Base: Mon 8 Jan 2024 00:00:00 UTC  (Unix 1704672000)
+T0 = 1704672000
+
+bars_gh = [
+    # ── Weekday bars — large price moves, should NOT trigger (time diff = 4 h) ──
+    (T0 + 0 * H4_S,                     None,    42100.0, "Mon bar 1 (first bar — no prev)"),
+    (T0 + 1 * H4_S,                  42100.0, 42155.0, "Mon bar 2 (+$55, weekday)"),
+    (T0 + 2 * H4_S,                  42155.0, 41900.0, "Mon bar 3 (-$255, weekday — large move)"),
+    (T0 + 3 * H4_S,                  41900.0, 42400.0, "Mon bar 4 (+$500, weekday — large move)"),
+    (T0 + 4 * H4_S,                  42400.0, 42380.0, "Mon bar 5 (-$20, weekday)"),
+    # ── Maintenance-adjacent bar: 5-hour gap — should NOT trigger (< 8 h) ──
+    (T0 + 4 * H4_S + MAINT_EXTRA_S, 42380.0, 42600.0, "Post-maintenance bar (+$220, 5h gap — NOT a CME gap)"),
+    # ── Weekend gap: ~49 h after last Friday bar — SHOULD be detected ──
+    (T0 + 4 * H4_S + MAINT_EXTRA_S + WEEKEND_S, 42600.0, 43250.0, "Sunday open (weekend gap +$650)"),
+    # ── Post-weekend weekday bars (normal transitions) ──
+    (T0 + 4 * H4_S + MAINT_EXTRA_S + WEEKEND_S + 1 * H4_S, 43250.0, 43270.0, "Mon bar post-weekend (+$20, weekday)"),
+    (T0 + 4 * H4_S + MAINT_EXTRA_S + WEEKEND_S + 2 * H4_S, 43270.0, 42900.0, "Tue bar (-$370, weekday — large move)"),
+    # ── Holiday gap: ~28 h — SHOULD be detected ──
+    (T0 + 4 * H4_S + MAINT_EXTRA_S + WEEKEND_S + 2 * H4_S + HOLIDAY_S,
+     42900.0, 43500.0, "Post-holiday open (holiday gap +$600)"),
+    # ── Post-holiday normal bar ──
+    (T0 + 4 * H4_S + MAINT_EXTRA_S + WEEKEND_S + 2 * H4_S + HOLIDAY_S + H4_S,
+     43500.0, 43480.0, "Bar after holiday (+$20, weekday — no gap)"),
+    # ── Edge: large move on normal bar right after holiday ──
+    (T0 + 4 * H4_S + MAINT_EXTRA_S + WEEKEND_S + 2 * H4_S + HOLIDAY_S + 2 * H4_S,
+     43480.0, 43900.0, "2nd bar after holiday (+$420, weekday — NOT a CME gap)"),
+]
+
+EXPECTED_CME_GAPS = {
+    "Sunday open (weekend gap +$650)",
+    "Post-holiday open (holiday gap +$600)",
+}
+
+print(f"\nThreshold: >{CME_GAP_THRESHOLD/3600:.0f} h between consecutive H4 bar open times\n")
+hdr = f"{'#':>2}  {'Description':50s}  {'TimeDiff':>9}  {'GapSize':>9}  {'IsCMEGap':>9}  {'Detected':>8}"
+print(hdr)
+print("-" * len(hdr))
+
+detected_set     = set()
+old_detected_set = set()
+
+for i, (open_time, prev_close, bar_open, desc) in enumerate(bars_gh):
+    if i == 0:
+        print(f"{i:2d}  {desc:50s}  {'—':>9}  {'—':>9}  {'—':>9}  {'—':>8}")
+        continue
+
+    prev_time    = bars_gh[i - 1][0]
+    time_diff_s  = open_time - prev_time
+    time_diff_h  = time_diff_s / 3600
+    is_cme_gap   = time_diff_s > CME_GAP_THRESHOLD
+    gap_size_usd = abs(bar_open - prev_close) if prev_close is not None else 0.0
+
+    # NEW logic (with CME gap filter)
+    detected_new = is_cme_gap and gap_size_usd >= MIN_GAP_USD
+    # OLD logic (without CME gap filter — original bug)
+    detected_old = gap_size_usd >= MIN_GAP_USD
+
+    if detected_new:
+        detected_set.add(desc)
+    if detected_old:
+        old_detected_set.add(desc)
+
+    flag = " ← EXPECTED" if desc in EXPECTED_CME_GAPS else ""
+    print(f"{i:2d}  {desc:50s}  {time_diff_h:8.1f}h  ${gap_size_usd:8.2f}  {str(is_cme_gap):>9}  {str(detected_new):>8}{flag}")
+
+true_positives  = len(detected_set & EXPECTED_CME_GAPS)
+false_positives = len(detected_set - EXPECTED_CME_GAPS)
+false_negatives = len(EXPECTED_CME_GAPS - detected_set)
+
+old_fp = len(old_detected_set - EXPECTED_CME_GAPS)
+old_tp = len(old_detected_set & EXPECTED_CME_GAPS)
+
+print()
+print("─── Results ───────────────────────────────────────────")
+print(f"  OLD logic (no CME filter) — gaps detected: {len(old_detected_set)}")
+print(f"    True positives : {old_tp}  |  False positives: {old_fp}")
+print()
+print(f"  NEW logic (with CME filter) — gaps detected: {len(detected_set)}")
+print(f"    True positives : {true_positives}  |  False positives: {false_positives}  |  False negatives: {false_negatives}")
+if len(detected_set) > 0:
+    precision = true_positives / len(detected_set)
+    print(f"    Precision: {precision:.0%}  |  Recall: {true_positives / len(EXPECTED_CME_GAPS):.0%}")
+
+all_pass = (false_positives == 0 and false_negatives == 0 and old_fp > 0)
+print()
+print("BACKTEST 4 RESULT:", "PASS ✓" if all_pass else "FAIL ✗")
+print("  (pass = new logic has 0 false positives, 0 false negatives,")
+print("   and old logic had at least 1 false positive demonstrating the bug)")
