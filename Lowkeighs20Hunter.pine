@@ -71,7 +71,7 @@ if htf_new_bar
         float  bot_price = is_bull ? htf_prev_close : htf_open
         float  mid_price = (top_price + bot_price) / 2.0
         color  fill_col  = is_bull ? bull_col : bear_col
-        extend ext       = extend_box ? extend.right : extend.none
+        ext              = extend_box ? extend.right : extend.none
 
         box b = box.new(
              left         = bar_index,
