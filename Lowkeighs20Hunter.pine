@@ -1,0 +1,215 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// Lowkeighs Gap-Hunter
+//
+// HOW TO USE:
+//   Add to ANY Bitcoin chart (BTCUSDT, BTCUSD, COINBASE:BTCUSD, etc.)
+//   The script always reads H4 data from BTC1! (CME) regardless of the chart you are on.
+//   GREEN  = bullish gap (price jumped up), fully unfilled
+//   RED    = bearish gap (price jumped down), fully unfilled
+//   YELLOW = partially filled gap (price has entered but not closed through the full zone)
+//   GREY   = fully filled gap (visible only when "Show Filled Gaps" is enabled)
+
+//@version=6
+indicator(title = "Lowkeighs Gap-Hunter", shorttitle = "Gap-Hunter", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ─────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────
+grp_src      = "Source Settings"
+cme_sym      = input.symbol("BTC1!",  "CME Symbol",             group = grp_src, tooltip = "CME futures contract to pull H4 gaps from. Default: BTC1!")
+htf          = input.timeframe("240", "Gap Timeframe",           group = grp_src, tooltip = "Timeframe to detect gaps on. 240 = H4.")
+
+grp_flt      = "Gap Filter"
+min_gap      = input.float(50.0, "Minimum Gap Size (USD)",       group = grp_flt, minval = 0, tooltip = "Gaps smaller than this are ignored")
+show_filled  = input.bool(false, "Show Fully Filled Gaps",       group = grp_flt, tooltip = "Keep the box visible after price has fully closed through the gap")
+show_partial = input.bool(true,  "Show Partially Filled Gaps",   group = grp_flt, tooltip = "Highlight gaps that price has entered but not yet fully closed through — shown in yellow")
+
+grp_sty      = "Visual Style"
+bull_col     = input.color(color.new(color.green,  75), "Bullish Gap Fill",         group = grp_sty)
+bear_col     = input.color(color.new(color.red,    75), "Bearish Gap Fill",         group = grp_sty)
+partial_col  = input.color(color.new(color.yellow, 75), "Partial Fill Colour",      group = grp_sty, tooltip = "Colour applied to gaps that have been partially entered but not fully filled")
+bord_col     = input.color(color.new(color.gray,   30), "Border Color",             group = grp_sty)
+bord_wid     = input.int(1, "Border Width", minval = 1, maxval = 4,                 group = grp_sty)
+extend_box   = input.bool(true, "Extend Boxes Right",                               group = grp_sty, tooltip = "Unfilled gaps extend to the right edge of the chart")
+show_labels  = input.bool(true, "Show Gap Labels",                                  group = grp_sty)
+show_mid     = input.bool(true, "Show Gap Midline",                                 group = grp_sty)
+mid_col      = input.color(color.new(color.white, 40), "Midline Color",             group = grp_sty)
+
+// ─────────────────────────────────────────────
+// FETCH CME H4 DATA
+// ─────────────────────────────────────────────
+htf_open       = request.security(cme_sym, htf, open,      lookahead = barmerge.lookahead_off)
+htf_time       = request.security(cme_sym, htf, time,      lookahead = barmerge.lookahead_off)
+htf_prev_close = request.security(cme_sym, htf, close[1],  lookahead = barmerge.lookahead_off)
+
+// Detect a new H4 bar
+htf_new_bar = ta.change(htf_time) != 0
+
+// ─────────────────────────────────────────────
+// STATE TRACKING
+// 0 = unfilled  |  1 = partially filled  |  2 = fully filled
+// ─────────────────────────────────────────────
+var box[]   gap_boxes    = array.new<box>()
+var line[]  gap_mids     = array.new<line>()
+var label[] gap_labels   = array.new<label>()
+var float[] gap_tops     = array.new<float>()
+var float[] gap_bots     = array.new<float>()
+var bool[]  gap_is_bull  = array.new<bool>()   // track direction for colour resets
+var int[]   gap_state    = array.new<int>()    // 0 = unfilled, 1 = partial, 2 = filled
+
+// ─────────────────────────────────────────────
+// GAP DETECTION AND BOX DRAWING
+// ─────────────────────────────────────────────
+if htf_new_bar
+    float gap_size = math.abs(htf_open - htf_prev_close)
+    bool  is_bull  = htf_open > htf_prev_close
+    bool  is_bear  = htf_open < htf_prev_close
+    bool  has_gap  = gap_size >= min_gap and (is_bull or is_bear)
+
+    if has_gap
+        float  top_price = is_bull ? htf_open       : htf_prev_close
+        float  bot_price = is_bull ? htf_prev_close : htf_open
+        float  mid_price = (top_price + bot_price) / 2.0
+        color  fill_col  = is_bull ? bull_col : bear_col
+        extend ext       = extend_box ? extend.right : extend.none
+
+        box b = box.new(
+             left         = bar_index,
+             top          = top_price,
+             right        = bar_index + 1,
+             bottom       = bot_price,
+             border_color = bord_col,
+             border_width = bord_wid,
+             bgcolor      = fill_col,
+             extend       = ext)
+
+        line ml = line.new(
+             x1     = bar_index,
+             y1     = mid_price,
+             x2     = bar_index + 1,
+             y2     = mid_price,
+             color  = show_mid ? mid_col : color.new(color.white, 100),
+             width  = 1,
+             style  = line.style_dashed,
+             extend = ext)
+
+        string lbl_txt = (is_bull ? "Bull Gap   " : "Bear Gap   ") +
+                         "$" + str.tostring(math.round(gap_size)) +
+                         "   Top: "  + str.tostring(math.round(top_price)) +
+                         "   Bot: "  + str.tostring(math.round(bot_price))
+
+        label lbl = label.new(
+             x         = bar_index,
+             y         = top_price,
+             text      = show_labels ? lbl_txt : "",
+             color     = color.new(color.black, 100),
+             textcolor = is_bull ? color.green : color.red,
+             style     = label.style_label_lower_right,
+             size      = size.small)
+
+        array.push(gap_boxes,   b)
+        array.push(gap_mids,    ml)
+        array.push(gap_labels,  lbl)
+        array.push(gap_tops,    top_price)
+        array.push(gap_bots,    bot_price)
+        array.push(gap_is_bull, is_bull)
+        array.push(gap_state,   0)
+
+// ─────────────────────────────────────────────
+// GAP STATE DETECTION — runs every bar
+//
+// PARTIAL: price high has traded INTO the gap zone but close has NOT
+//          crossed fully through (close still outside or within zone)
+//
+// FULL:    price has CLOSED beyond the opposite side of the gap
+//          i.e. for a bull gap: close <= bot_price
+//               for a bear gap: close >= top_price
+//          OR close is inside the zone (gap traversed through)
+// ─────────────────────────────────────────────
+int gap_count = array.size(gap_boxes)
+
+if gap_count > 0
+    for i = gap_count - 1 to 0
+        int   state   = array.get(gap_state, i)
+        float g_top   = array.get(gap_tops, i)
+        float g_bot   = array.get(gap_bots, i)
+        bool  is_bull = array.get(gap_is_bull, i)
+
+        // Skip already fully filled gaps
+        if state < 2
+            // Has high or low traded into the gap zone this bar?
+            bool  touched   = high >= g_bot and low <= g_top
+            // Has close moved fully through or inside the gap?
+            bool  fully_filled = close >= g_bot and close <= g_top
+
+            // ── FULLY FILLED ──────────────────────────────
+            if fully_filled and state < 2
+                array.set(gap_state, i, 2)
+                if not show_filled
+                    box.delete(array.get(gap_boxes, i))
+                    line.delete(array.get(gap_mids, i))
+                    label.delete(array.get(gap_labels, i))
+                else
+                    box.set_bgcolor(array.get(gap_boxes, i),      color.new(color.gray, 85))
+                    box.set_border_color(array.get(gap_boxes, i), color.new(color.gray, 60))
+                    line.set_color(array.get(gap_mids, i),        color.new(color.gray, 60))
+                    label.set_textcolor(array.get(gap_labels, i), color.gray)
+
+            // ── PARTIALLY FILLED ──────────────────────────
+            else if touched and not fully_filled and state == 0
+                array.set(gap_state, i, 1)
+                if show_partial
+                    box.set_bgcolor(array.get(gap_boxes, i),      partial_col)
+                    box.set_border_color(array.get(gap_boxes, i), color.new(color.yellow, 10))
+                    line.set_color(array.get(gap_mids, i),        color.new(color.yellow, 30))
+                    label.set_textcolor(array.get(gap_labels, i), color.yellow)
+                else
+                    // show_partial is off — hide the box entirely until full fill
+                    box.set_bgcolor(array.get(gap_boxes, i),      color.new(color.white, 100))
+                    box.set_border_color(array.get(gap_boxes, i), color.new(color.white, 100))
+                    line.set_color(array.get(gap_mids, i),        color.new(color.white, 100))
+
+            // ── PRICE PULLED BACK OUT — restore original colour ──
+            else if not touched and state == 1
+                array.set(gap_state, i, 0)
+                color orig_col = is_bull ? bull_col : bear_col
+                color orig_txt = is_bull ? color.green : color.red
+                box.set_bgcolor(array.get(gap_boxes, i),      orig_col)
+                box.set_border_color(array.get(gap_boxes, i), bord_col)
+                line.set_color(array.get(gap_mids, i),        show_mid ? mid_col : color.new(color.white, 100))
+                label.set_textcolor(array.get(gap_labels, i), orig_txt)
+
+// ─────────────────────────────────────────────
+// DASHBOARD  (5 rows: header + above + partial + below + min size)
+// ─────────────────────────────────────────────
+var table dash = table.new(position.top_right, 2, 5, bgcolor = color.new(color.black, 70), border_width = 1)
+
+int unfilled_above  = 0
+int partial_count   = 0
+int unfilled_below  = 0
+int total_count     = array.size(gap_state)
+
+if total_count > 0
+    for i = 0 to total_count - 1
+        int   s     = array.get(gap_state, i)
+        float g_top = array.get(gap_tops, i)
+        float g_bot = array.get(gap_bots, i)
+
+        if s == 0
+            if g_bot > close
+                unfilled_above += 1
+            else if g_top < close
+                unfilled_below += 1
+        else if s == 1
+            partial_count += 1
+
+table.cell(dash, 0, 0, "LOWKEIGHS GAP-HUNTER",               text_color = color.white,  text_size = size.small, bgcolor = color.new(color.blue, 55))
+table.cell(dash, 1, 0, "BTC1! H4",                           text_color = color.silver, text_size = size.small, bgcolor = color.new(color.blue, 55))
+table.cell(dash, 0, 1, "Gaps Above (unfilled)",               text_color = color.red,    text_size = size.small)
+table.cell(dash, 1, 1, str.tostring(unfilled_above),          text_color = color.red,    text_size = size.small)
+table.cell(dash, 0, 2, "Partial Fills",                       text_color = color.yellow, text_size = size.small)
+table.cell(dash, 1, 2, str.tostring(partial_count),           text_color = color.yellow, text_size = size.small)
+table.cell(dash, 0, 3, "Gaps Below (unfilled)",               text_color = color.green,  text_size = size.small)
+table.cell(dash, 1, 3, str.tostring(unfilled_below),          text_color = color.green,  text_size = size.small)
+table.cell(dash, 0, 4, "Min Gap Size",                        text_color = color.silver, text_size = size.small)
+table.cell(dash, 1, 4, "$" + str.tostring(min_gap),           text_color = color.silver, text_size = size.small)
