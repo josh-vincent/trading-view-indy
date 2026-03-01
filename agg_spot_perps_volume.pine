@@ -8,10 +8,10 @@ var string G_PERP = "Perps — Colours"
 var string G_DIV  = "Divergence"
 
 // ── Mode & display inputs ─────────────────────────────────────────────────────
-i_mode   = input.string("CVD",       "Mode",
+i_mode   = input.string("Delta",     "Mode",
      options=["Volume", "Delta", "CVD"],
      group=G_MODE,
-     tooltip="Volume = raw aggregated volume (always positive, coloured by bar direction).\nDelta = buy volume minus sell volume — positive when buyers dominate, negative when sellers dominate.\nCVD = Cumulative Volume Delta — running total of delta showing overall buying/selling pressure trend as two separate lines (spot vs perps).")
+     tooltip="Volume = raw aggregated volume (always positive, coloured by bar direction).\nDelta = buy volume minus sell volume — positive when buyers dominate, negative when sellers dominate.\nCVD = Cumulative Volume Delta — running total of delta. NOTE: CVD requires TradingView to have volume data for all queried spot exchange pairs. If spot data is unavailable for your symbol the spot CVD line will appear flat at zero. On intraday charts CVD resets each session; on daily+ it accumulates from the first available bar.")
 i_unit   = input.string("Coin",      "Unit",
      options=["Coin", "USD"],
      group=G_MODE,
@@ -100,8 +100,15 @@ perp_dlt = (f_delta(o_p_bnb, c_p_bnb, v_p_bnb) + f_delta(o_p_byb, c_p_byb, v_p_b
             f_delta(o_p_cb,  c_p_cb,  v_p_cb)  + f_delta(o_p_okx, c_p_okx, v_p_okx)) * usd_mult
 
 // CVD (cumulative running total of delta)
-spot_cvd = ta.cum(spot_dlt)
-perp_cvd = ta.cum(perp_dlt)
+// On intraday charts: resets each session to prevent scale drift from years of accumulated data.
+// On daily+ charts: accumulates from the first available bar (standard CVD behaviour).
+var float _spot_cvd = 0.0
+var float _perp_cvd = 0.0
+bool _session_reset = timeframe.isintraday and session.isfirstbar
+_spot_cvd := _session_reset ? spot_dlt : _spot_cvd + spot_dlt
+_perp_cvd := _session_reset ? perp_dlt : _perp_cvd + perp_dlt
+spot_cvd = _spot_cvd
+perp_cvd = _perp_cvd
 
 // Select mode value
 spot_val = i_mode == "Delta" ? spot_dlt : i_mode == "CVD" ? spot_cvd : spot_raw
