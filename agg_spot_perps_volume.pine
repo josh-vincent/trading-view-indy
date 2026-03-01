@@ -8,15 +8,15 @@ var string G_PERP = "Perps — Colours"
 var string G_DIV  = "Divergence"
 
 // ── Mode & display inputs ─────────────────────────────────────────────────────
-i_mode   = input.string("Delta",     "Mode",
-     options=["Volume", "Delta"],
+i_mode   = input.string("CVD",       "Mode",
+     options=["Volume", "Delta", "CVD"],
      group=G_MODE,
-     tooltip="Volume = raw aggregated volume (always positive, coloured by bar direction).\nDelta = buy volume minus sell volume — positive when buyers dominate, negative when sellers dominate.")
+     tooltip="Volume = raw aggregated volume (always positive, coloured by bar direction).\nDelta = buy volume minus sell volume — positive when buyers dominate, negative when sellers dominate.\nCVD = Cumulative Volume Delta — running total of delta showing overall buying/selling pressure trend as two separate lines (spot vs perps).")
 i_unit   = input.string("Coin",      "Unit",
      options=["Coin", "USD"],
      group=G_MODE,
      tooltip="Coin = native asset volume.\nUSD = volume × close price.")
-i_style  = input.string("Histogram", "Display Style",
+i_style  = input.string("Line",      "Display Style",
      options=["Histogram", "Line", "Area"],
      group=G_MODE,
      tooltip="Histogram = coloured bars.\nLine = coloured line that changes colour based on positive/negative value.\nArea = line with filled area to zero.")
@@ -99,9 +99,13 @@ perp_raw = (f_vol(v_p_bnb) + f_vol(v_p_byb) + f_vol(v_p_cb) + f_vol(v_p_okx)) * 
 perp_dlt = (f_delta(o_p_bnb, c_p_bnb, v_p_bnb) + f_delta(o_p_byb, c_p_byb, v_p_byb) +
             f_delta(o_p_cb,  c_p_cb,  v_p_cb)  + f_delta(o_p_okx, c_p_okx, v_p_okx)) * usd_mult
 
+// CVD (cumulative running total of delta)
+spot_cvd = ta.cum(spot_dlt)
+perp_cvd = ta.cum(perp_dlt)
+
 // Select mode value
-spot_val = i_mode == "Delta" ? spot_dlt : spot_raw
-perp_val = i_mode == "Delta" ? perp_dlt : perp_raw
+spot_val = i_mode == "Delta" ? spot_dlt : i_mode == "CVD" ? spot_cvd : spot_raw
+perp_val = i_mode == "Delta" ? perp_dlt : i_mode == "CVD" ? perp_cvd : perp_raw
 
 // ── Smoothing ─────────────────────────────────────────────────────────────────
 spot_s = ta.sma(spot_val, i_smooth)
@@ -111,8 +115,12 @@ perp_s = ta.sma(perp_val, i_smooth)
 // Delta mode: colour by sign of the delta value
 // Volume mode: colour by bar direction on chart (same convention as standard volume histogram)
 bar_up = close >= open
-spot_c = i_mode == "Delta" ? (spot_s >= 0 ? spot_up : spot_dn) : (bar_up ? spot_up : spot_dn)
-perp_c = i_mode == "Delta" ? (perp_s >= 0 ? perp_up : perp_dn) : (bar_up ? perp_up : perp_dn)
+spot_c = i_mode == "Delta" ? (spot_s >= 0 ? spot_up : spot_dn) :
+         i_mode == "CVD"   ? (spot_s > spot_s[1] ? spot_up : spot_dn) :
+                              (bar_up ? spot_up : spot_dn)
+perp_c = i_mode == "Delta" ? (perp_s >= 0 ? perp_up : perp_dn) :
+         i_mode == "CVD"   ? (perp_s > perp_s[1] ? perp_up : perp_dn) :
+                              (bar_up ? perp_up : perp_dn)
 
 // Histogram bars: slight transparency so overlapping bars remain readable
 spot_col_hist = color.new(spot_c, 15)
