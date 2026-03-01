@@ -1,0 +1,167 @@
+//@version=6
+indicator("Agg Spot vs Perps Volume", shorttitle="Spot⟷Perps", overlay=false)
+
+// ── Groups ────────────────────────────────────────────────────────────────────
+var string G_MODE = "Mode & Display"
+var string G_SPOT = "Spot — Colours"
+var string G_PERP = "Perps — Colours"
+var string G_DIV  = "Divergence"
+
+// ── Mode & display inputs ─────────────────────────────────────────────────────
+i_mode   = input.string("Delta",     "Mode",
+     options=["Volume", "Delta"],
+     group=G_MODE,
+     tooltip="Volume = raw aggregated volume (always positive, coloured by bar direction).\nDelta = buy volume minus sell volume — positive when buyers dominate, negative when sellers dominate.")
+i_unit   = input.string("Coin",      "Unit",
+     options=["Coin", "USD"],
+     group=G_MODE,
+     tooltip="Coin = native asset volume.\nUSD = volume × close price.")
+i_style  = input.string("Histogram", "Display Style",
+     options=["Histogram", "Line", "Area"],
+     group=G_MODE,
+     tooltip="Histogram = coloured bars.\nLine = coloured line that changes colour based on positive/negative value.\nArea = line with filled area to zero.")
+i_smooth = input.int(1, "SMA Smoothing", minval=1, maxval=500,
+     group=G_MODE,
+     tooltip="1 = no smoothing. Increase to reduce noise and see clearer trends.")
+
+// ── Spot colour inputs ────────────────────────────────────────────────────────
+i_show_spot = input.bool(true,  "Show Spot",                           group=G_SPOT)
+spot_up     = input.color(color.new(#26a69a, 0),  "Spot Up   (+/buy)",  group=G_SPOT)
+spot_dn     = input.color(color.new(#ef5350, 0),  "Spot Down (−/sell)", group=G_SPOT)
+spot_w      = input.int(2, "Line Width", minval=1, maxval=4,             group=G_SPOT)
+
+// ── Perp colour inputs ────────────────────────────────────────────────────────
+i_show_perp = input.bool(true,  "Show Perps",                          group=G_PERP)
+perp_up     = input.color(color.new(#42a5f5, 0),  "Perp Up   (+/buy)",  group=G_PERP)
+perp_dn     = input.color(color.new(#ff7043, 0),  "Perp Down (−/sell)", group=G_PERP)
+perp_w      = input.int(2, "Line Width", minval=1, maxval=4,             group=G_PERP)
+
+// ── Divergence inputs ─────────────────────────────────────────────────────────
+i_div       = input.bool(true,
+     "Highlight Divergence (Delta mode only)",
+     group=G_DIV,
+     tooltip="Shades the background when spot and perps are moving in opposite directions.")
+div_perp_bg = input.color(color.new(#42a5f5, 85), "Perp ↑ / Spot ↓ bg",
+     group=G_DIV,
+     tooltip="Perps bidding while spot sells — leverage-driven price pump signal.")
+div_spot_bg = input.color(color.new(#26a69a, 85), "Spot ↑ / Perp ↓ bg",
+     group=G_DIV,
+     tooltip="Spot accumulating while perps sell — organic accumulation signal.")
+
+// ── Symbol construction ───────────────────────────────────────────────────────
+_base    = syminfo.basecurrency
+_quote   = syminfo.currency
+_cbquote = str.replace(_quote, "USDT", "USD")
+
+// Spot tickers
+sym_s_bnb = "BINANCE:"  + _base + _quote
+sym_s_byb = "BYBIT:"    + _base + _quote
+sym_s_cb  = "COINBASE:" + _base + _cbquote
+sym_s_okx = "OKX:"      + _base + _quote
+
+// Perp tickers (.P suffix = perpetual futures on TradingView)
+sym_p_bnb = "BINANCE:"  + _base + _quote + ".P"
+sym_p_byb = "BYBIT:"    + _base + _quote + ".P"
+sym_p_cb  = "COINBASE:" + _base + _cbquote + ".P"
+sym_p_okx = "OKX:"      + _base + _quote + ".P"
+
+// ── Security fetches ──────────────────────────────────────────────────────────
+[o_s_bnb, c_s_bnb, v_s_bnb] = request.security(sym_s_bnb, timeframe.period, [open, close, volume], ignore_invalid_symbol=true)
+[o_s_byb, c_s_byb, v_s_byb] = request.security(sym_s_byb, timeframe.period, [open, close, volume], ignore_invalid_symbol=true)
+[o_s_cb,  c_s_cb,  v_s_cb]  = request.security(sym_s_cb,  timeframe.period, [open, close, volume], ignore_invalid_symbol=true)
+[o_s_okx, c_s_okx, v_s_okx] = request.security(sym_s_okx, timeframe.period, [open, close, volume], ignore_invalid_symbol=true)
+
+[o_p_bnb, c_p_bnb, v_p_bnb] = request.security(sym_p_bnb, timeframe.period, [open, close, volume], ignore_invalid_symbol=true)
+[o_p_byb, c_p_byb, v_p_byb] = request.security(sym_p_byb, timeframe.period, [open, close, volume], ignore_invalid_symbol=true)
+[o_p_cb,  c_p_cb,  v_p_cb]  = request.security(sym_p_cb,  timeframe.period, [open, close, volume], ignore_invalid_symbol=true)
+[o_p_okx, c_p_okx, v_p_okx] = request.security(sym_p_okx, timeframe.period, [open, close, volume], ignore_invalid_symbol=true)
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+// Signed delta: positive for up-close bars, negative for down-close bars
+f_delta(op, cl, vol) =>
+    _v = nz(vol)
+    cl >= op ? _v : -_v
+
+// Raw unsigned volume
+f_vol(vol) => nz(vol)
+
+// ── USD multiplier ────────────────────────────────────────────────────────────
+usd_mult = i_unit == "USD" ? close : 1.0
+
+// ── Aggregation ───────────────────────────────────────────────────────────────
+// Spot
+spot_raw = (f_vol(v_s_bnb) + f_vol(v_s_byb) + f_vol(v_s_cb) + f_vol(v_s_okx)) * usd_mult
+spot_dlt = (f_delta(o_s_bnb, c_s_bnb, v_s_bnb) + f_delta(o_s_byb, c_s_byb, v_s_byb) +
+            f_delta(o_s_cb,  c_s_cb,  v_s_cb)  + f_delta(o_s_okx, c_s_okx, v_s_okx)) * usd_mult
+
+// Perps
+perp_raw = (f_vol(v_p_bnb) + f_vol(v_p_byb) + f_vol(v_p_cb) + f_vol(v_p_okx)) * usd_mult
+perp_dlt = (f_delta(o_p_bnb, c_p_bnb, v_p_bnb) + f_delta(o_p_byb, c_p_byb, v_p_byb) +
+            f_delta(o_p_cb,  c_p_cb,  v_p_cb)  + f_delta(o_p_okx, c_p_okx, v_p_okx)) * usd_mult
+
+// Select mode value
+spot_val = i_mode == "Delta" ? spot_dlt : spot_raw
+perp_val = i_mode == "Delta" ? perp_dlt : perp_raw
+
+// ── Smoothing ─────────────────────────────────────────────────────────────────
+spot_s = ta.sma(spot_val, i_smooth)
+perp_s = ta.sma(perp_val, i_smooth)
+
+// ── Colour per bar ────────────────────────────────────────────────────────────
+// Delta mode: colour by sign of the delta value
+// Volume mode: colour by bar direction on chart (same convention as standard volume histogram)
+bar_up = close >= open
+spot_c = i_mode == "Delta" ? (spot_s >= 0 ? spot_up : spot_dn) : (bar_up ? spot_up : spot_dn)
+perp_c = i_mode == "Delta" ? (perp_s >= 0 ? perp_up : perp_dn) : (bar_up ? perp_up : perp_dn)
+
+// Histogram bars: slight transparency so overlapping bars remain readable
+spot_col_hist = color.new(spot_c, 15)
+perp_col_hist = color.new(perp_c, 15)
+
+// Area fill: more transparent to show both fills simultaneously
+spot_col_fill = color.new(spot_c, 75)
+perp_col_fill = color.new(perp_c, 75)
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+// Histogram columns
+plot(i_style == "Histogram" and i_show_spot ? spot_s : na,
+     "Spot",  spot_col_hist, style=plot.style_columns)
+plot(i_style == "Histogram" and i_show_perp ? perp_s : na,
+     "Perps", perp_col_hist, style=plot.style_columns)
+
+// Line / Area — series lines (also base for area fill)
+ps = plot(i_style != "Histogram" and i_show_spot ? spot_s : na,
+          "Spot",  spot_c, spot_w)
+pp = plot(i_style != "Histogram" and i_show_perp ? perp_s : na,
+          "Perps", perp_c, perp_w)
+
+// Invisible zero baseline used as fill anchor
+pz = plot(0.0, "Zero (fill anchor)", color.new(color.gray, 100), display=display.none)
+
+// Area fill between line and zero
+fill(ps, pz, i_style == "Area" and i_show_spot ? spot_col_fill : na, "Spot Area")
+fill(pp, pz, i_style == "Area" and i_show_perp ? perp_col_fill : na, "Perps Area")
+
+// Zero reference line (always visible)
+hline(0, "Zero", color.new(color.gray, 50), linestyle=hline.style_solid, linewidth=1)
+
+// ── Divergence background ─────────────────────────────────────────────────────
+div_perp_up_spot_dn = i_div and i_mode == "Delta" and perp_s > 0 and spot_s < 0
+div_spot_up_perp_dn = i_div and i_mode == "Delta" and spot_s > 0 and perp_s < 0
+
+bgcolor(div_perp_up_spot_dn ? div_perp_bg : na, title="Divergence: Perp ↑ / Spot ↓")
+bgcolor(div_spot_up_perp_dn ? div_spot_bg : na, title="Divergence: Spot ↑ / Perp ↓")
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+alertcondition(ta.crossover(spot_s, perp_s),
+     "Spot crosses above Perps",
+     "Aggregated spot volume crossed above perps volume")
+alertcondition(ta.crossunder(spot_s, perp_s),
+     "Spot crosses below Perps",
+     "Aggregated spot volume crossed below perps volume")
+alertcondition(div_perp_up_spot_dn,
+     "Divergence: Perp ↑ / Spot ↓",
+     "Perps buying while spot sells — potential leverage-driven pump")
+alertcondition(div_spot_up_perp_dn,
+     "Divergence: Spot ↑ / Perp ↓",
+     "Spot accumulating while perps sell — potential organic accumulation")
