@@ -1,0 +1,104 @@
+//@version=6
+indicator("Aggregated Spot vs Perps Volume", shorttitle="Spot/Perp Vol", format=format.volume, overlay=false)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════════════════════════════
+var string g_disp  = "Display"
+var string g_src   = "Data Sources"
+var string g_color = "Colors"
+
+vol_mode = input.string("Volume", "Mode", options=["Volume", "Delta"], group=g_disp,
+    tooltip="Volume: raw aggregated volume (always positive)\nDelta: directional volume (+up bars / −down bars)")
+vol_unit = input.string("Coin", "Units", options=["Coin", "USD"], group=g_disp,
+    tooltip="Coin: base currency (e.g. BTC)  |  USD: volume × close price")
+smooth   = input.int(1, "Smoothing", minval=1, maxval=500, group=g_disp,
+    tooltip="SMA length applied to each line. Use 1 for no smoothing.")
+show_div = input.bool(true, "Highlight Divergence", group=g_disp,
+    tooltip="Color background when Perp and Spot deltas move in opposite directions (Delta mode only)")
+
+use_coinbase = input.bool(true, "Coinbase", group=g_src, inline="ex")
+use_binance  = input.bool(true, "Binance",  group=g_src, inline="ex")
+use_bybit    = input.bool(true, "Bybit",    group=g_src, inline="ex")
+use_okx      = input.bool(true, "OKX",      group=g_src, inline="ex")
+
+spot_col = input.color(color.new(#26a69a, 0),  "Spot",        group=g_color, inline="c")
+perp_col = input.color(color.new(#ef5350, 0),  "Perp",        group=g_color, inline="c")
+div_bull = input.color(color.new(#26a69a, 85), "Perp↑ Spot↓", group=g_color, inline="d",
+    tooltip="Background color when perps are buying while spot is selling")
+div_bear = input.color(color.new(#ef5350, 85), "Perp↓ Spot↑", group=g_color, inline="d",
+    tooltip="Background color when spot is buying while perps are selling")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DATA REQUESTS
+// Spot:  Coinbase, Binance, Bybit, OKX
+// Perps: Coinbase, Binance, Bybit, OKX
+// Each request returns [raw volume, directional volume]
+// ignore_invalid_symbol=true returns na when a ticker is unavailable
+// ══════════════════════════════════════════════════════════════════════════════
+base = syminfo.basecurrency
+
+// Spot volume requests
+[cb_sv,  cb_sd]  = request.security("COINBASE:" + base + "USD",   timeframe.period, [volume, close >= open ? volume : -volume], ignore_invalid_symbol=true)
+[bn_sv,  bn_sd]  = request.security("BINANCE:"  + base + "USDT",  timeframe.period, [volume, close >= open ? volume : -volume], ignore_invalid_symbol=true)
+[bb_sv,  bb_sd]  = request.security("BYBIT:"    + base + "USDT",  timeframe.period, [volume, close >= open ? volume : -volume], ignore_invalid_symbol=true)
+[okx_sv, okx_sd] = request.security("OKX:"      + base + "USDT",  timeframe.period, [volume, close >= open ? volume : -volume], ignore_invalid_symbol=true)
+
+// Perp volume requests
+[cb_pv,  cb_pd]  = request.security("COINBASE:" + base + "USD.P",  timeframe.period, [volume, close >= open ? volume : -volume], ignore_invalid_symbol=true)
+[bn_pv,  bn_pd]  = request.security("BINANCE:"  + base + "USDT.P", timeframe.period, [volume, close >= open ? volume : -volume], ignore_invalid_symbol=true)
+[bb_pv,  bb_pd]  = request.security("BYBIT:"    + base + "USDT.P", timeframe.period, [volume, close >= open ? volume : -volume], ignore_invalid_symbol=true)
+[okx_pv, okx_pd] = request.security("OKX:"      + base + "USDT.P", timeframe.period, [volume, close >= open ? volume : -volume], ignore_invalid_symbol=true)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AGGREGATE
+// ══════════════════════════════════════════════════════════════════════════════
+spot_vol = (use_coinbase ? nz(cb_sv,  0.0) : 0.0) + (use_binance ? nz(bn_sv,  0.0) : 0.0) +
+           (use_bybit    ? nz(bb_sv,  0.0) : 0.0) + (use_okx     ? nz(okx_sv, 0.0) : 0.0)
+
+perp_vol = (use_coinbase ? nz(cb_pv,  0.0) : 0.0) + (use_binance ? nz(bn_pv,  0.0) : 0.0) +
+           (use_bybit    ? nz(bb_pv,  0.0) : 0.0) + (use_okx     ? nz(okx_pv, 0.0) : 0.0)
+
+spot_del = (use_coinbase ? nz(cb_sd,  0.0) : 0.0) + (use_binance ? nz(bn_sd,  0.0) : 0.0) +
+           (use_bybit    ? nz(bb_sd,  0.0) : 0.0) + (use_okx     ? nz(okx_sd, 0.0) : 0.0)
+
+perp_del = (use_coinbase ? nz(cb_pd,  0.0) : 0.0) + (use_binance ? nz(bn_pd,  0.0) : 0.0) +
+           (use_bybit    ? nz(bb_pd,  0.0) : 0.0) + (use_okx     ? nz(okx_pd, 0.0) : 0.0)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CALCULATIONS
+// ══════════════════════════════════════════════════════════════════════════════
+mult     = vol_unit == "USD" ? close : 1.0
+is_delta = vol_mode == "Delta"
+
+s_raw  = (is_delta ? spot_del : spot_vol) * mult
+p_raw  = (is_delta ? perp_del : perp_vol) * mult
+
+s_plot = ta.sma(s_raw, smooth)
+p_plot = ta.sma(p_raw, smooth)
+
+// Divergence conditions (meaningful only in Delta mode)
+diverge_bull = is_delta and p_plot > 0 and s_plot < 0  // Perps buying, spot selling
+diverge_bear = is_delta and p_plot < 0 and s_plot > 0  // Spot buying, perps selling
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PLOTS
+// ══════════════════════════════════════════════════════════════════════════════
+plot(s_plot, "Spot", spot_col, 2)
+plot(p_plot, "Perp", perp_col, 2)
+hline(0, "Zero", color.new(color.gray, 60), linestyle=hline.style_dashed)
+
+bgcolor(show_div and diverge_bull ? div_bull : na, title="Divergence: Perp↑ Spot↓")
+bgcolor(show_div and diverge_bear ? div_bear : na, title="Divergence: Perp↓ Spot↑")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ══════════════════════════════════════════════════════════════════════════════
+alertcondition(diverge_bull, "Divergence: Perp↑ / Spot↓",
+    "Perps buying while spot sells — potential leverage-driven move")
+alertcondition(diverge_bear, "Divergence: Perp↓ / Spot↑",
+    "Spot buying while perps sell — potential organic accumulation signal")
+alertcondition(ta.crossover(p_plot,  s_plot), "Perp Vol > Spot Vol",
+    "Perp volume crossed above spot volume")
+alertcondition(ta.crossunder(p_plot, s_plot), "Spot Vol > Perp Vol",
+    "Spot volume crossed above perp volume")
