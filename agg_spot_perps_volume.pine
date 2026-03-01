@@ -6,6 +6,7 @@ var string G_MODE = "Mode & Display"
 var string G_SPOT = "Spot — Colours"
 var string G_PERP = "Perps — Colours"
 var string G_DIV  = "Divergence"
+var string G_NORM = "Scale Normalisation"
 
 // ── Mode & display inputs ─────────────────────────────────────────────────────
 i_mode   = input.string("Delta",     "Mode",
@@ -23,6 +24,14 @@ i_style  = input.string("Line",      "Display Style",
 i_smooth = input.int(1, "SMA Smoothing", minval=1, maxval=500,
      group=G_MODE,
      tooltip="1 = no smoothing. Increase to reduce noise and see clearer trends.")
+
+// ── Scale Normalisation inputs ────────────────────────────────────────────────
+i_normalize = input.bool(true, "Normalise to Independent Scales (z-score)",
+     group=G_NORM,
+     tooltip="When enabled, spot and perps are each normalised to their own z-score so their movements are directly comparable even when the raw values differ in magnitude. Enable this if spot appears as a flat line next to perps.")
+i_norm_len  = input.int(100, "Lookback Length", minval=5, maxval=500,
+     group=G_NORM,
+     tooltip="Number of bars used to compute mean and standard deviation for z-score normalisation. Higher values produce smoother normalisation.")
 
 // ── Spot colour inputs ────────────────────────────────────────────────────────
 i_show_spot = input.bool(true,  "Show Spot",                           group=G_SPOT)
@@ -118,15 +127,27 @@ perp_val = i_mode == "Delta" ? perp_dlt : i_mode == "CVD" ? perp_cvd : perp_raw
 spot_s = ta.sma(spot_val, i_smooth)
 perp_s = ta.sma(perp_val, i_smooth)
 
+// ── Scale Normalisation (z-score) ─────────────────────────────────────────────
+// Each series is independently normalised to its own z-score so spot and perps
+// are directly comparable on the same visual scale regardless of raw magnitude.
+// A z-score of 0 = the mean, ±1 = one standard deviation from the mean.
+f_zscore(series float, len int) =>
+    avg = ta.sma(series, len)
+    std = ta.stdev(series, len)
+    std > 0 ? (series - avg) / std : 0.0
+
+spot_plot = i_normalize ? f_zscore(spot_s, i_norm_len) : spot_s
+perp_plot = i_normalize ? f_zscore(perp_s, i_norm_len) : perp_s
+
 // ── Colour per bar ────────────────────────────────────────────────────────────
 // Delta mode: colour by sign of the delta value
 // Volume mode: colour by bar direction on chart (same convention as standard volume histogram)
 bar_up = close >= open
-spot_c = i_mode == "Delta" ? (spot_s >= 0 ? spot_up : spot_dn) :
-         i_mode == "CVD"   ? (spot_s > spot_s[1] ? spot_up : spot_dn) :
+spot_c = i_mode == "Delta" ? (spot_plot >= 0 ? spot_up : spot_dn) :
+         i_mode == "CVD"   ? (spot_plot > spot_plot[1] ? spot_up : spot_dn) :
                               (bar_up ? spot_up : spot_dn)
-perp_c = i_mode == "Delta" ? (perp_s >= 0 ? perp_up : perp_dn) :
-         i_mode == "CVD"   ? (perp_s > perp_s[1] ? perp_up : perp_dn) :
+perp_c = i_mode == "Delta" ? (perp_plot >= 0 ? perp_up : perp_dn) :
+         i_mode == "CVD"   ? (perp_plot > perp_plot[1] ? perp_up : perp_dn) :
                               (bar_up ? perp_up : perp_dn)
 
 // Histogram bars: slight transparency so overlapping bars remain readable
@@ -139,15 +160,15 @@ perp_col_fill = color.new(perp_c, 75)
 
 // ── Plots ─────────────────────────────────────────────────────────────────────
 // Histogram columns
-plot(i_style == "Histogram" and i_show_spot ? spot_s : na,
+plot(i_style == "Histogram" and i_show_spot ? spot_plot : na,
      "Spot",  spot_col_hist, style=plot.style_columns)
-plot(i_style == "Histogram" and i_show_perp ? perp_s : na,
+plot(i_style == "Histogram" and i_show_perp ? perp_plot : na,
      "Perps", perp_col_hist, style=plot.style_columns)
 
 // Line / Area — series lines (also base for area fill)
-ps = plot(i_style != "Histogram" and i_show_spot ? spot_s : na,
+ps = plot(i_style != "Histogram" and i_show_spot ? spot_plot : na,
           "Spot",  spot_c, spot_w)
-pp = plot(i_style != "Histogram" and i_show_perp ? perp_s : na,
+pp = plot(i_style != "Histogram" and i_show_perp ? perp_plot : na,
           "Perps", perp_c, perp_w)
 
 // Invisible zero baseline used as fill anchor
@@ -161,17 +182,17 @@ fill(pp, pz, i_style == "Area" and i_show_perp ? perp_col_fill : na, "Perps Area
 hline(0, "Zero", color.new(color.gray, 50), linestyle=hline.style_solid, linewidth=1)
 
 // ── Divergence background ─────────────────────────────────────────────────────
-div_perp_up_spot_dn = i_div and i_mode == "Delta" and perp_s > 0 and spot_s < 0
-div_spot_up_perp_dn = i_div and i_mode == "Delta" and spot_s > 0 and perp_s < 0
+div_perp_up_spot_dn = i_div and i_mode == "Delta" and perp_plot > 0 and spot_plot < 0
+div_spot_up_perp_dn = i_div and i_mode == "Delta" and spot_plot > 0 and perp_plot < 0
 
 bgcolor(div_perp_up_spot_dn ? div_perp_bg : na, title="Divergence: Perp ↑ / Spot ↓")
 bgcolor(div_spot_up_perp_dn ? div_spot_bg : na, title="Divergence: Spot ↑ / Perp ↓")
 
 // ── Alerts ────────────────────────────────────────────────────────────────────
-alertcondition(ta.crossover(spot_s, perp_s),
+alertcondition(ta.crossover(spot_plot, perp_plot),
      "Spot crosses above Perps",
      "Aggregated spot volume crossed above perps volume")
-alertcondition(ta.crossunder(spot_s, perp_s),
+alertcondition(ta.crossunder(spot_plot, perp_plot),
      "Spot crosses below Perps",
      "Aggregated spot volume crossed below perps volume")
 alertcondition(div_perp_up_spot_dn,
