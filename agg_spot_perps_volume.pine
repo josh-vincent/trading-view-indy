@@ -131,10 +131,10 @@ perp_s = ta.sma(perp_val, i_smooth)
 // Each series is independently normalised to its own z-score so spot and perps
 // are directly comparable on the same visual scale regardless of raw magnitude.
 // A z-score of 0 = the mean, ±1 = one standard deviation from the mean.
-f_zscore(series float, len int) =>
-    avg = ta.sma(series, len)
-    std = ta.stdev(series, len)
-    std > 0 ? (series - avg) / std : 0.0
+f_zscore(src float, len int) =>
+    avg = ta.sma(src, len)
+    std = ta.stdev(src, len)
+    std > 0 ? (src - avg) / std : 0.0
 
 spot_plot = i_normalize ? f_zscore(spot_s, i_norm_len) : spot_s
 perp_plot = i_normalize ? f_zscore(perp_s, i_norm_len) : perp_s
