@@ -1,6 +1,10 @@
 // =============================================================================
-// Lowkeigh-LTVW — Aggregated Multi-Timeframe VWAP + Value Areas
+// Lowkeigh-LTVW v2 — Aggregated Multi-Timeframe VWAP + Value Areas
 // MMT Platform — JavaScript 2 Format
+//
+// v2 changes:
+//   - Fixed crossesLevel() shared-state bug: now uses per-alert-id Map so
+//     evaluating multiple alerts on the same bar no longer corrupts prev-close
 //
 // Ported from: Agg-MTF-VWAP.pine (Lowkeigh-LTVW, PineScript v6)
 //
@@ -355,28 +359,31 @@ function onBar(bar, prevBar) {
 
 // ── Alerts ────────────────────────────────────────────────────────────────────
 const alerts = [
-  { id: "price_x_vwap",      description: "Price crossed Agg-VWAP",               condition: (bar, out) => crossesLevel(bar.close, out.plots.find(p => p.id === "vwap")?.value)  },
-  { id: "price_x_vah",       description: "Price crossed Agg-VAH (+1 SD)",         condition: (bar, out) => crossesLevel(bar.close, out.plots.find(p => p.id === "vah")?.value)   },
-  { id: "price_x_val",       description: "Price crossed Agg-VAL (-1 SD)",         condition: (bar, out) => crossesLevel(bar.close, out.plots.find(p => p.id === "val")?.value)   },
-  { id: "price_x_pvwap",     description: "Price crossed Previous Agg-VWAP",       condition: (bar, out) => crossesLevel(bar.close, out.plots.find(p => p.id === "pvwap")?.value) },
-  { id: "price_x_rv_vwap",   description: "Price crossed Rolling VWAP",            condition: (bar, out) => crossesLevel(bar.close, out.plots.find(p => p.id === "rv_vwap")?.value) },
-  { id: "price_x_rv_vah",    description: "Price crossed Rolling VAH (+1 SD)",     condition: (bar, out) => crossesLevel(bar.close, out.plots.find(p => p.id === "rv_vah")?.value)  },
-  { id: "price_x_rv_val",    description: "Price crossed Rolling VAL (-1 SD)",     condition: (bar, out) => crossesLevel(bar.close, out.plots.find(p => p.id === "rv_val")?.value)  },
+  { id: "price_x_vwap",      description: "Price crossed Agg-VWAP",               condition: (bar, out) => crossesLevel("price_x_vwap",    bar.close, out.plots.find(p => p.id === "vwap")?.value)    },
+  { id: "price_x_vah",       description: "Price crossed Agg-VAH (+1 SD)",         condition: (bar, out) => crossesLevel("price_x_vah",     bar.close, out.plots.find(p => p.id === "vah")?.value)     },
+  { id: "price_x_val",       description: "Price crossed Agg-VAL (-1 SD)",         condition: (bar, out) => crossesLevel("price_x_val",     bar.close, out.plots.find(p => p.id === "val")?.value)     },
+  { id: "price_x_pvwap",     description: "Price crossed Previous Agg-VWAP",       condition: (bar, out) => crossesLevel("price_x_pvwap",   bar.close, out.plots.find(p => p.id === "pvwap")?.value)   },
+  { id: "price_x_rv_vwap",   description: "Price crossed Rolling VWAP",            condition: (bar, out) => crossesLevel("price_x_rv_vwap", bar.close, out.plots.find(p => p.id === "rv_vwap")?.value) },
+  { id: "price_x_rv_vah",    description: "Price crossed Rolling VAH (+1 SD)",     condition: (bar, out) => crossesLevel("price_x_rv_vah",  bar.close, out.plots.find(p => p.id === "rv_vah")?.value)  },
+  { id: "price_x_rv_val",    description: "Price crossed Rolling VAL (-1 SD)",     condition: (bar, out) => crossesLevel("price_x_rv_val",  bar.close, out.plots.find(p => p.id === "rv_val")?.value)  },
 ];
 
-// Helper: returns true when close crosses level (simple one-bar cross detection)
-let _prevClose = null;
-function crossesLevel(close, level) {
-  if (level == null || _prevClose == null) { _prevClose = close; return false; }
-  const crossed = (_prevClose < level && close >= level) || (_prevClose > level && close <= level);
-  _prevClose = close;
-  return crossed;
+// Helper: returns true when close crosses level.
+// Uses a per-alert-id Map so that evaluating multiple alerts on the same bar
+// does not corrupt the shared prev-close state (bug present in v1).
+const _prevCloseMap = new Map();
+function crossesLevel(alertId, close, level) {
+  const prevClose = _prevCloseMap.get(alertId) ?? null;
+  _prevCloseMap.set(alertId, close);
+  if (level == null || prevClose == null) return false;
+  return (prevClose < level && close >= level) || (prevClose > level && close <= level);
 }
 
 // ── Exports (consumed by MMT platform runtime) ────────────────────────────────
 module.exports = {
-  name:        "Lowkeigh-LTVW",
-  shortTitle:  "Lowkeigh-LTVW",
+  name:        "Lowkeigh-LTVW v2",
+  shortTitle:  "Lowkeigh-LTVW v2",
+  version:     2,
   overlay:     true,
   settings,
   onBar,
