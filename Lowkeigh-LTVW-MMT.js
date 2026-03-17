@@ -1,3 +1,4 @@
+// @version=2
 // =============================================================================
 // Lowkeigh-LTVW v2 — Aggregated Multi-Timeframe VWAP + Value Areas
 // MMT Platform — JavaScript 2 Format
@@ -139,7 +140,9 @@ function isNewPeriod(bar, prevBar, eff_tf) {
  */
 function aggregateFeeds(feeds) {
   let agg_vol = 0, agg_tpv = 0, agg_tp2v = 0;
-  for (const { tp, vol } of feeds) {
+  for (const feed of feeds) {
+    if (feed == null) continue;
+    const { tp, vol } = feed;
     if (tp == null || vol == null || isNaN(tp) || isNaN(vol)) continue;
     agg_vol  += vol;
     agg_tpv  += tp * vol;
@@ -273,7 +276,7 @@ function onBar(bar, prevBar) {
   // ── Rolling VWAP ──────────────────────────────────────────────────────────
   let rv_vwap = null, rv_vah = null, rv_val = null;
   if (rv_show) {
-    const rv_bars = Math.max(1, Math.round(rv_days * 86400 / bar.tf_secs));
+    const rv_bars = bar.tf_secs > 0 ? Math.max(1, Math.round(rv_days * 86400 / bar.tf_secs)) : 1;
     const { vwap: _rv, sd: _rs } = calcRollingVwap(agg_tpv, agg_vol, agg_tp2v, rv_bars);
     rv_vwap = _rv;
     if (rv_show_sd && _rv != null && _rs != null) {
