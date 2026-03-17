@@ -35,7 +35,7 @@
 //   VWAP4: Apr 20, 2024 — BTC Halving (~$65k)  ← highest confidence
 // =============================================================================
 
-//@version=5
+//@version=6
 indicator("AGG VWAP — Multi-Anchor", shorttitle="AGG-VWAP", overlay=true)
 
 // ── Anchor date inputs ────────────────────────────────────────────────────────
