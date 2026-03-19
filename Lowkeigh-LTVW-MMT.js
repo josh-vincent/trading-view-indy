@@ -53,26 +53,26 @@ const settings = {
   c_rv_vwap: input("rvVWAP colour", "color", "#FF9800", { group: "Rolling VWAP" }),
   c_rv_vah: input("rvVAH colour", "color", "#FF5722", { group: "Rolling VWAP" }),
   c_rv_val: input("rvVAL colour", "color", "#FF5722", { group: "Rolling VWAP" }),
-  c_rv_fill: input("rvVA Fill", "color", "#FF980015", { group: "Rolling VWAP" }),
+  c_rv_fill: input("rvVA Fill", "color", "#FF980026", { group: "Rolling VWAP" }),
 
   // Colours — Developing
   c_vwap: input("VWAP", "color", "#2196F3", { group: "Colours: Developing" }),
   c_vah: input("VAH", "color", "#4CAF50", { group: "Colours: Developing" }),
   c_val: input("VAL", "color", "#4CAF50", { group: "Colours: Developing" }),
-  c_sd2: input("±SD2", "color", "#FF9800", { group: "Colours: Developing" }),
-  c_sd3: input("±SD3", "color", "#F44336", { group: "Colours: Developing" }),
-  c_fill_dev: input("Value Area Fill", "color", "#4CAF5015", { group: "Colours: Developing" }),
+  c_sd2: input("±SD2", "color", "#FF9800CC", { group: "Colours: Developing" }),
+  c_sd3: input("±SD3", "color", "#F44336CC", { group: "Colours: Developing" }),
+  c_fill_dev: input("Value Area Fill", "color", "#4CAF5026", { group: "Colours: Developing" }),
 
   // Colours — Previous
-  c_pvwap: input("Prev VWAP", "color", "#9E9E9E", { group: "Colours: Previous" }),
-  c_pvah: input("Prev VAH", "color", "#9E9E9E", { group: "Colours: Previous" }),
-  c_pval: input("Prev VAL", "color", "#9E9E9E", { group: "Colours: Previous" }),
-  c_fill_prv: input("Value Area Fill", "color", "#9E9E9E15", { group: "Colours: Previous" }),
+  c_pvwap: input("Prev VWAP", "color", "#9E9E9EB3", { group: "Colours: Previous" }),
+  c_pvah: input("Prev VAH", "color", "#9E9E9EB3", { group: "Colours: Previous" }),
+  c_pval: input("Prev VAL", "color", "#9E9E9EB3", { group: "Colours: Previous" }),
+  c_fill_prv: input("Value Area Fill", "color", "#9E9E9E26", { group: "Colours: Previous" }),
 
   // Colours — Labels
-  c_lbl_d_bg: input("Dev Label BG", "color", "#2196F3", { group: "Colours: Labels" }),
+  c_lbl_d_bg: input("Dev Label BG", "color", "#2196F3E6", { group: "Colours: Labels" }),
   c_lbl_d_tx: input("Dev Label Text", "color", "#FFFFFF", { group: "Colours: Labels" }),
-  c_lbl_p_bg: input("Prev Label BG", "color", "#9E9E9E", { group: "Colours: Labels" }),
+  c_lbl_p_bg: input("Prev Label BG", "color", "#9E9E9EE6", { group: "Colours: Labels" }),
   c_lbl_p_tx: input("Prev Label Text", "color", "#FFFFFF", { group: "Colours: Labels" }),
 };
 
@@ -274,10 +274,11 @@ function onBar(bar, prevBar) {
   const pvlo = prev_vwap != null && prev_sd != null ? prev_vwap - prev_sd : null;
 
   // ── Rolling VWAP ──────────────────────────────────────────────────────────
+  // Always accumulate buffers so toggling rv_show on mid-chart gives correct data.
+  const rv_bars = bar.tf_secs > 0 ? Math.max(1, Math.round(rv_days * 86400 / bar.tf_secs)) : 1;
+  const { vwap: _rv, sd: _rs } = calcRollingVwap(agg_tpv, agg_vol, agg_tp2v, rv_bars);
   let rv_vwap = null, rv_vah = null, rv_val = null;
   if (rv_show) {
-    const rv_bars = bar.tf_secs > 0 ? Math.max(1, Math.round(rv_days * 86400 / bar.tf_secs)) : 1;
-    const { vwap: _rv, sd: _rs } = calcRollingVwap(agg_tpv, agg_vol, agg_tp2v, rv_bars);
     rv_vwap = _rv;
     if (rv_show_sd && _rv != null && _rs != null) {
       rv_vah = _rv + _rs;
@@ -379,7 +380,7 @@ function crossesLevel(alertId, close, level) {
   const prevClose = _prevCloseMap.get(alertId) ?? null;
   _prevCloseMap.set(alertId, close);
   if (level == null || prevClose == null) return false;
-  return (prevClose < level && close >= level) || (prevClose > level && close <= level);
+  return (prevClose <= level && close > level) || (prevClose >= level && close < level);
 }
 
 // ── Exports (consumed by MMT platform runtime) ────────────────────────────────
