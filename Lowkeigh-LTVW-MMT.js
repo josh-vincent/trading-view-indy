@@ -555,12 +555,16 @@ function crossesLevel(alertId, close, level) {
 }
 
 // ── Exports (consumed by MMT platform runtime) ────────────────────────────────
-module.exports = {
-  name:        "Lowkeigh-LTVW v2",
-  shortTitle:  "Lowkeigh-LTVW v2",
-  version:     2,
-  overlay:     true,
-  settings,
-  onBar,
-  alerts,
-};
+// Guard against environments (e.g. MMT sandbox) where the CommonJS `module`
+// global is not defined — the runtime consumes settings/onBar/alerts directly.
+if (typeof module !== "undefined") {
+  module.exports = {
+    name:        "Lowkeigh-LTVW v2",
+    shortTitle:  "Lowkeigh-LTVW v2",
+    version:     2,
+    overlay:     true,
+    settings,
+    onBar,
+    alerts,
+  };
+}
