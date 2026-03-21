@@ -25,7 +25,7 @@ indicator("Lowkeigh-LTVW v2", true)
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
 // Timeframe
-const tf_mode    = input.select("Timeframe", "Auto", { options: ["Auto", "Yearly", "Quarterly", "Monthly", "Weekly", "Daily"], group: "Timeframe" })
+const tf_mode    = input.string("Timeframe", "Auto", { options: ["Auto", "Yearly", "Quarterly", "Monthly", "Weekly", "Daily"], group: "Timeframe" })
 
 // Display
 const show_sd1   = input.bool("Show Value Area (±1 SD)", true,  { group: "Display" })
