@@ -355,7 +355,8 @@ function calcRollingVwap(agg_tpv, agg_vol, agg_tp2v, rv_bars) {
   const sum_tpv  = rv_tpv_buf.reduce((a, b) => a + b, 0);
   const sum_tp2v = rv_tp2v_buf.reduce((a, b) => a + b, 0);
 
-  return calcVwapSd(sum_tpv, sum_vol, sum_tp2v);
+  const { vwap: rv_vwap, sd: rv_sd } = calcVwapSd(sum_tpv, sum_vol, sum_tp2v);
+  return { rv_vwap, rv_sd };
 }
 
 // ── Label prefix helpers ──────────────────────────────────────────────────────
@@ -392,7 +393,7 @@ function prevPrefix(eff_tf) {
  * @param {object|null} prevBar - Previous bar (null on first bar)
  * @returns {object} Plot data consumed by the MMT rendering engine
  */
-function onBar(bar, prevBar) {
+function onBar(bar, prevBar, settings) {
   const {
     tf_mode, show_sd1, shade_dev, show_sd2, sd2_mult,
     show_sd3, sd3_mult, show_prev, shade_prev,
@@ -446,7 +447,7 @@ function onBar(bar, prevBar) {
   // ── Rolling VWAP ──────────────────────────────────────────────────────────
   // Always accumulate buffers so toggling rv_show on mid-chart gives correct data.
   const rv_bars = bar.tf_secs > 0 ? Math.max(1, Math.round(rv_days * 86400 / bar.tf_secs)) : 1;
-  const { vwap: _rv, sd: _rs } = calcRollingVwap(agg_tpv, agg_vol, agg_tp2v, rv_bars);
+  const { rv_vwap: _rv, rv_sd: _rs } = calcRollingVwap(agg_tpv, agg_vol, agg_tp2v, rv_bars);
   let rv_vwap = null, rv_vah = null, rv_val = null;
   if (rv_show) {
     rv_vwap = _rv;
