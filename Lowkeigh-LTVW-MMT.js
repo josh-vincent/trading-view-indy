@@ -1,11 +1,12 @@
-// @version=2
+//@version=2
 // =============================================================================
 // Lowkeigh-LTVW v2 — Aggregated Multi-Timeframe VWAP + Value Areas
-// MMT Platform — JavaScript 2 Format
+// MMT Platform — JavaScript v2 Format
 //
 // v2 changes:
 //   - Fixed crossesLevel() shared-state bug: now uses per-alert-id Map so
 //     evaluating multiple alerts on the same bar no longer corrupts prev-close
+//   - Migrated settings from descriptor schema to input.* calls (v2 API)
 //
 // Ported from: Agg-MTF-VWAP.pine (Lowkeigh-LTVW, PineScript v6)
 //
@@ -20,231 +21,53 @@
 //   - Extension lines + labels
 // =============================================================================
 
-// ── Settings ─────────────────────────────────────────────────────────────────
-// Declarative schema consumed by the MMT JS v2 runtime.
-// Each key maps to a descriptor; the runtime resolves these into live values
-// that are accessed via the same key names throughout the indicator.
-const settings = {
+indicator("Lowkeigh-LTVW v2", true)
 
-  // ── Timeframe ───────────────────────────────────────────────────────────────
-  tf_mode: {
-    type:    "select",
-    title:   "Timeframe",
-    default: "Auto",
-    options: ["Auto", "Yearly", "Quarterly", "Monthly", "Weekly", "Daily"],
-    group:   "Timeframe",
-  },
+// ── Inputs ────────────────────────────────────────────────────────────────────
+// Timeframe
+const tf_mode    = input.select("Timeframe", "Auto", { options: ["Auto", "Yearly", "Quarterly", "Monthly", "Weekly", "Daily"], group: "Timeframe" })
 
-  // ── Display ─────────────────────────────────────────────────────────────────
-  show_sd1: {
-    type:    "bool",
-    title:   "Show Value Area (±1 SD)",
-    default: true,
-    group:   "Display",
-  },
-  shade_dev: {
-    type:    "bool",
-    title:   "Shade Developing Value Area",
-    default: true,
-    group:   "Display",
-  },
-  show_sd2: {
-    type:    "bool",
-    title:   "Show ±SD2 Bands",
-    default: false,
-    group:   "Display",
-  },
-  sd2_mult: {
-    type:    "float",
-    title:   "SD2 Multiplier",
-    default: 1.5,
-    min:     0.1,
-    step:    0.1,
-    tooltip: "Custom multiplier for SD band 2 (default 1.5)",
-    group:   "Display",
-  },
-  show_sd3: {
-    type:    "bool",
-    title:   "Show ±SD3 Bands",
-    default: false,
-    group:   "Display",
-  },
-  sd3_mult: {
-    type:    "float",
-    title:   "SD3 Multiplier",
-    default: 2.0,
-    min:     0.1,
-    step:    0.1,
-    tooltip: "Custom multiplier for SD band 3 (default 2.0)",
-    group:   "Display",
-  },
-  show_prev: {
-    type:    "bool",
-    title:   "Show Previous Period",
-    default: true,
-    group:   "Display",
-  },
-  shade_prev: {
-    type:    "bool",
-    title:   "Shade Previous Value Area",
-    default: false,
-    group:   "Display",
-  },
-  show_lbl: {
-    type:    "bool",
-    title:   "Show Labels",
-    default: true,
-    group:   "Display",
-  },
-  show_ext: {
-    type:    "bool",
-    title:   "Extend Developing Lines to RHS",
-    default: true,
-    group:   "Display",
-  },
+// Display
+const show_sd1   = input.bool("Show Value Area (±1 SD)", true,  { group: "Display" })
+const shade_dev  = input.bool("Shade Developing Value Area", true,  { group: "Display" })
+const show_sd2   = input.bool("Show ±SD2 Bands", false, { group: "Display" })
+const sd2_mult   = input.float("SD2 Multiplier", 1.5, { min: 0.1, step: 0.1, tooltip: "Custom multiplier for SD band 2 (default 1.5)", group: "Display" })
+const show_sd3   = input.bool("Show ±SD3 Bands", false, { group: "Display" })
+const sd3_mult   = input.float("SD3 Multiplier", 2.0, { min: 0.1, step: 0.1, tooltip: "Custom multiplier for SD band 3 (default 2.0)", group: "Display" })
+const show_prev  = input.bool("Show Previous Period", true,  { group: "Display" })
+const shade_prev = input.bool("Shade Previous Value Area", false, { group: "Display" })
+const show_lbl   = input.bool("Show Labels", true,  { group: "Display" })
+const show_ext   = input.bool("Extend Developing Lines to RHS", true,  { group: "Display" })
 
-  // ── Rolling VWAP ────────────────────────────────────────────────────────────
-  rv_show: {
-    type:    "bool",
-    title:   "Enable Rolling VWAP",
-    default: false,
-    group:   "Rolling VWAP",
-  },
-  rv_days: {
-    type:    "int",
-    title:   "Duration (days)",
-    default: 30,
-    min:     1,
-    tooltip: "Number of calendar days to look back for the rolling VWAP.",
-    group:   "Rolling VWAP",
-  },
-  rv_show_sd: {
-    type:    "bool",
-    title:   "Show ±1 SD Bands (rvVAH / rvVAL)",
-    default: false,
-    group:   "Rolling VWAP",
-  },
-  rv_shade: {
-    type:    "bool",
-    title:   "Shade Rolling Value Area",
-    default: false,
-    group:   "Rolling VWAP",
-  },
-  c_rv_vwap: {
-    type:    "color",
-    title:   "rvVWAP colour",
-    default: "#FF9800",
-    group:   "Rolling VWAP",
-  },
-  c_rv_vah: {
-    type:    "color",
-    title:   "rvVAH colour",
-    default: "#FF5722",
-    group:   "Rolling VWAP",
-  },
-  c_rv_val: {
-    type:    "color",
-    title:   "rvVAL colour",
-    default: "#FF5722",
-    group:   "Rolling VWAP",
-  },
-  c_rv_fill: {
-    type:    "color",
-    title:   "rvVA Fill",
-    default: "#FF980026",
-    group:   "Rolling VWAP",
-  },
+// Rolling VWAP
+const rv_show    = input.bool("Enable Rolling VWAP", false, { group: "Rolling VWAP" })
+const rv_days    = input.int("Duration (days)", 30, { min: 1, tooltip: "Number of calendar days to look back for the rolling VWAP.", group: "Rolling VWAP" })
+const rv_show_sd = input.bool("Show ±1 SD Bands (rvVAH / rvVAL)", false, { group: "Rolling VWAP" })
+const rv_shade   = input.bool("Shade Rolling Value Area", false, { group: "Rolling VWAP" })
+const c_rv_vwap  = input.color("rvVWAP colour", "#FF9800",   { group: "Rolling VWAP" })
+const c_rv_vah   = input.color("rvVAH colour",  "#FF5722",   { group: "Rolling VWAP" })
+const c_rv_val   = input.color("rvVAL colour",  "#FF5722",   { group: "Rolling VWAP" })
+const c_rv_fill  = input.color("rvVA Fill",     "#FF980026", { group: "Rolling VWAP" })
 
-  // ── Colours: Developing ─────────────────────────────────────────────────────
-  c_vwap: {
-    type:    "color",
-    title:   "VWAP",
-    default: "#2196F3",
-    group:   "Colours: Developing",
-  },
-  c_vah: {
-    type:    "color",
-    title:   "VAH",
-    default: "#4CAF50",
-    group:   "Colours: Developing",
-  },
-  c_val: {
-    type:    "color",
-    title:   "VAL",
-    default: "#4CAF50",
-    group:   "Colours: Developing",
-  },
-  c_sd2: {
-    type:    "color",
-    title:   "±SD2",
-    default: "#FF9800CC",
-    group:   "Colours: Developing",
-  },
-  c_sd3: {
-    type:    "color",
-    title:   "±SD3",
-    default: "#F44336CC",
-    group:   "Colours: Developing",
-  },
-  c_fill_dev: {
-    type:    "color",
-    title:   "Value Area Fill",
-    default: "#4CAF5026",
-    group:   "Colours: Developing",
-  },
+// Colours: Developing
+const c_vwap     = input.color("VWAP",             "#2196F3",   { group: "Colours: Developing" })
+const c_vah      = input.color("VAH",              "#4CAF50",   { group: "Colours: Developing" })
+const c_val      = input.color("VAL",              "#4CAF50",   { group: "Colours: Developing" })
+const c_sd2      = input.color("±SD2",             "#FF9800CC", { group: "Colours: Developing" })
+const c_sd3      = input.color("±SD3",             "#F44336CC", { group: "Colours: Developing" })
+const c_fill_dev = input.color("Value Area Fill",  "#4CAF5026", { group: "Colours: Developing" })
 
-  // ── Colours: Previous ───────────────────────────────────────────────────────
-  c_pvwap: {
-    type:    "color",
-    title:   "Prev VWAP",
-    default: "#9E9E9EB3",
-    group:   "Colours: Previous",
-  },
-  c_pvah: {
-    type:    "color",
-    title:   "Prev VAH",
-    default: "#9E9E9EB3",
-    group:   "Colours: Previous",
-  },
-  c_pval: {
-    type:    "color",
-    title:   "Prev VAL",
-    default: "#9E9E9EB3",
-    group:   "Colours: Previous",
-  },
-  c_fill_prv: {
-    type:    "color",
-    title:   "Value Area Fill",
-    default: "#9E9E9E26",
-    group:   "Colours: Previous",
-  },
+// Colours: Previous
+const c_pvwap    = input.color("Prev VWAP",        "#9E9E9EB3", { group: "Colours: Previous" })
+const c_pvah     = input.color("Prev VAH",         "#9E9E9EB3", { group: "Colours: Previous" })
+const c_pval     = input.color("Prev VAL",         "#9E9E9EB3", { group: "Colours: Previous" })
+const c_fill_prv = input.color("Value Area Fill",  "#9E9E9E26", { group: "Colours: Previous" })
 
-  // ── Colours: Labels ─────────────────────────────────────────────────────────
-  c_lbl_d_bg: {
-    type:    "color",
-    title:   "Dev Label BG",
-    default: "#2196F3E6",
-    group:   "Colours: Labels",
-  },
-  c_lbl_d_tx: {
-    type:    "color",
-    title:   "Dev Label Text",
-    default: "#FFFFFF",
-    group:   "Colours: Labels",
-  },
-  c_lbl_p_bg: {
-    type:    "color",
-    title:   "Prev Label BG",
-    default: "#9E9E9EE6",
-    group:   "Colours: Labels",
-  },
-  c_lbl_p_tx: {
-    type:    "color",
-    title:   "Prev Label Text",
-    default: "#FFFFFF",
-    group:   "Colours: Labels",
-  },
-};
+// Colours: Labels
+const c_lbl_d_bg = input.color("Dev Label BG",    "#2196F3E6", { group: "Colours: Labels" })
+const c_lbl_d_tx = input.color("Dev Label Text",  "#FFFFFF",   { group: "Colours: Labels" })
+const c_lbl_p_bg = input.color("Prev Label BG",   "#9E9E9EE6", { group: "Colours: Labels" })
+const c_lbl_p_tx = input.color("Prev Label Text", "#FFFFFF",   { group: "Colours: Labels" })
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let cum_tpv  = 0.0;
@@ -393,18 +216,7 @@ function prevPrefix(eff_tf) {
  * @param {object|null} prevBar - Previous bar (null on first bar)
  * @returns {object} Plot data consumed by the MMT rendering engine
  */
-function onBar(bar, prevBar, settings) {
-  const {
-    tf_mode, show_sd1, shade_dev, show_sd2, sd2_mult,
-    show_sd3, sd3_mult, show_prev, shade_prev,
-    show_lbl, show_ext,
-    rv_show, rv_days, rv_show_sd, rv_shade,
-    c_rv_vwap, c_rv_vah, c_rv_val, c_rv_fill,
-    c_vwap, c_vah, c_val, c_sd2, c_sd3, c_fill_dev,
-    c_pvwap, c_pvah, c_pval, c_fill_prv,
-    c_lbl_d_bg, c_lbl_d_tx, c_lbl_p_bg, c_lbl_p_tx,
-  } = settings;
-
+function onBar(bar, prevBar) {
   const eff_tf  = getEffTf(tf_mode, bar.tf_secs);
   const new_per = isNewPeriod(bar, prevBar, eff_tf);
 
@@ -556,14 +368,14 @@ function crossesLevel(alertId, close, level) {
 
 // ── Exports (consumed by MMT platform runtime) ────────────────────────────────
 // Guard against environments (e.g. MMT sandbox) where the CommonJS `module`
-// global is not defined — the runtime consumes settings/onBar/alerts directly.
+// global is not defined — the runtime consumes onBar/alerts directly.
+// Settings are declared via input.* calls above (v2 API).
 if (typeof module !== "undefined") {
   module.exports = {
     name:        "Lowkeigh-LTVW v2",
     shortTitle:  "Lowkeigh-LTVW v2",
     version:     2,
     overlay:     true,
-    settings,
     onBar,
     alerts,
   };
