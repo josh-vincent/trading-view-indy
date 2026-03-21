@@ -21,59 +21,229 @@
 // =============================================================================
 
 // ── Settings ─────────────────────────────────────────────────────────────────
+// Declarative schema consumed by the MMT JS v2 runtime.
+// Each key maps to a descriptor; the runtime resolves these into live values
+// that are accessed via the same key names throughout the indicator.
 const settings = {
-  // Timeframe
-  tf_mode: input("Timeframe", "string", "Auto", {
+
+  // ── Timeframe ───────────────────────────────────────────────────────────────
+  tf_mode: {
+    type:    "select",
+    title:   "Timeframe",
+    default: "Auto",
     options: ["Auto", "Yearly", "Quarterly", "Monthly", "Weekly", "Daily"],
-    group: "Timeframe",
-  }),
+    group:   "Timeframe",
+  },
 
-  // Display
-  show_sd1: input("Show Value Area (±1 SD)", "bool", true, { group: "Display" }),
-  shade_dev: input("Shade Developing Value Area", "bool", true, { group: "Display" }),
-  show_sd2: input("Show ±SD2 Bands", "bool", false, { group: "Display" }),
-  sd2_mult: input("SD2 Multiplier", "float", 1.5, { min: 0.1, step: 0.1, group: "Display",
-    tooltip: "Custom multiplier for SD band 2 (default 1.5)" }),
-  show_sd3: input("Show ±SD3 Bands", "bool", false, { group: "Display" }),
-  sd3_mult: input("SD3 Multiplier", "float", 2.0, { min: 0.1, step: 0.1, group: "Display",
-    tooltip: "Custom multiplier for SD band 3 (default 2.0)" }),
-  show_prev: input("Show Previous Period", "bool", true, { group: "Display" }),
-  shade_prev: input("Shade Previous Value Area", "bool", false, { group: "Display" }),
-  show_lbl: input("Show Labels", "bool", true, { group: "Display" }),
-  show_ext: input("Extend Developing Lines to RHS", "bool", true, { group: "Display" }),
+  // ── Display ─────────────────────────────────────────────────────────────────
+  show_sd1: {
+    type:    "bool",
+    title:   "Show Value Area (±1 SD)",
+    default: true,
+    group:   "Display",
+  },
+  shade_dev: {
+    type:    "bool",
+    title:   "Shade Developing Value Area",
+    default: true,
+    group:   "Display",
+  },
+  show_sd2: {
+    type:    "bool",
+    title:   "Show ±SD2 Bands",
+    default: false,
+    group:   "Display",
+  },
+  sd2_mult: {
+    type:    "float",
+    title:   "SD2 Multiplier",
+    default: 1.5,
+    min:     0.1,
+    step:    0.1,
+    tooltip: "Custom multiplier for SD band 2 (default 1.5)",
+    group:   "Display",
+  },
+  show_sd3: {
+    type:    "bool",
+    title:   "Show ±SD3 Bands",
+    default: false,
+    group:   "Display",
+  },
+  sd3_mult: {
+    type:    "float",
+    title:   "SD3 Multiplier",
+    default: 2.0,
+    min:     0.1,
+    step:    0.1,
+    tooltip: "Custom multiplier for SD band 3 (default 2.0)",
+    group:   "Display",
+  },
+  show_prev: {
+    type:    "bool",
+    title:   "Show Previous Period",
+    default: true,
+    group:   "Display",
+  },
+  shade_prev: {
+    type:    "bool",
+    title:   "Shade Previous Value Area",
+    default: false,
+    group:   "Display",
+  },
+  show_lbl: {
+    type:    "bool",
+    title:   "Show Labels",
+    default: true,
+    group:   "Display",
+  },
+  show_ext: {
+    type:    "bool",
+    title:   "Extend Developing Lines to RHS",
+    default: true,
+    group:   "Display",
+  },
 
-  // Rolling VWAP
-  rv_show: input("Enable Rolling VWAP", "bool", false, { group: "Rolling VWAP" }),
-  rv_days: input("Duration (days)", "int", 30, { min: 1, group: "Rolling VWAP",
-    tooltip: "Number of calendar days to look back for the rolling VWAP." }),
-  rv_show_sd: input("Show ±1 SD Bands (rvVAH / rvVAL)", "bool", false, { group: "Rolling VWAP" }),
-  rv_shade: input("Shade Rolling Value Area", "bool", false, { group: "Rolling VWAP" }),
+  // ── Rolling VWAP ────────────────────────────────────────────────────────────
+  rv_show: {
+    type:    "bool",
+    title:   "Enable Rolling VWAP",
+    default: false,
+    group:   "Rolling VWAP",
+  },
+  rv_days: {
+    type:    "int",
+    title:   "Duration (days)",
+    default: 30,
+    min:     1,
+    tooltip: "Number of calendar days to look back for the rolling VWAP.",
+    group:   "Rolling VWAP",
+  },
+  rv_show_sd: {
+    type:    "bool",
+    title:   "Show ±1 SD Bands (rvVAH / rvVAL)",
+    default: false,
+    group:   "Rolling VWAP",
+  },
+  rv_shade: {
+    type:    "bool",
+    title:   "Shade Rolling Value Area",
+    default: false,
+    group:   "Rolling VWAP",
+  },
+  c_rv_vwap: {
+    type:    "color",
+    title:   "rvVWAP colour",
+    default: "#FF9800",
+    group:   "Rolling VWAP",
+  },
+  c_rv_vah: {
+    type:    "color",
+    title:   "rvVAH colour",
+    default: "#FF5722",
+    group:   "Rolling VWAP",
+  },
+  c_rv_val: {
+    type:    "color",
+    title:   "rvVAL colour",
+    default: "#FF5722",
+    group:   "Rolling VWAP",
+  },
+  c_rv_fill: {
+    type:    "color",
+    title:   "rvVA Fill",
+    default: "#FF980026",
+    group:   "Rolling VWAP",
+  },
 
-  // Colours — Rolling VWAP
-  c_rv_vwap: input("rvVWAP colour", "color", "#FF9800", { group: "Rolling VWAP" }),
-  c_rv_vah: input("rvVAH colour", "color", "#FF5722", { group: "Rolling VWAP" }),
-  c_rv_val: input("rvVAL colour", "color", "#FF5722", { group: "Rolling VWAP" }),
-  c_rv_fill: input("rvVA Fill", "color", "#FF980026", { group: "Rolling VWAP" }),
+  // ── Colours: Developing ─────────────────────────────────────────────────────
+  c_vwap: {
+    type:    "color",
+    title:   "VWAP",
+    default: "#2196F3",
+    group:   "Colours: Developing",
+  },
+  c_vah: {
+    type:    "color",
+    title:   "VAH",
+    default: "#4CAF50",
+    group:   "Colours: Developing",
+  },
+  c_val: {
+    type:    "color",
+    title:   "VAL",
+    default: "#4CAF50",
+    group:   "Colours: Developing",
+  },
+  c_sd2: {
+    type:    "color",
+    title:   "±SD2",
+    default: "#FF9800CC",
+    group:   "Colours: Developing",
+  },
+  c_sd3: {
+    type:    "color",
+    title:   "±SD3",
+    default: "#F44336CC",
+    group:   "Colours: Developing",
+  },
+  c_fill_dev: {
+    type:    "color",
+    title:   "Value Area Fill",
+    default: "#4CAF5026",
+    group:   "Colours: Developing",
+  },
 
-  // Colours — Developing
-  c_vwap: input("VWAP", "color", "#2196F3", { group: "Colours: Developing" }),
-  c_vah: input("VAH", "color", "#4CAF50", { group: "Colours: Developing" }),
-  c_val: input("VAL", "color", "#4CAF50", { group: "Colours: Developing" }),
-  c_sd2: input("±SD2", "color", "#FF9800CC", { group: "Colours: Developing" }),
-  c_sd3: input("±SD3", "color", "#F44336CC", { group: "Colours: Developing" }),
-  c_fill_dev: input("Value Area Fill", "color", "#4CAF5026", { group: "Colours: Developing" }),
+  // ── Colours: Previous ───────────────────────────────────────────────────────
+  c_pvwap: {
+    type:    "color",
+    title:   "Prev VWAP",
+    default: "#9E9E9EB3",
+    group:   "Colours: Previous",
+  },
+  c_pvah: {
+    type:    "color",
+    title:   "Prev VAH",
+    default: "#9E9E9EB3",
+    group:   "Colours: Previous",
+  },
+  c_pval: {
+    type:    "color",
+    title:   "Prev VAL",
+    default: "#9E9E9EB3",
+    group:   "Colours: Previous",
+  },
+  c_fill_prv: {
+    type:    "color",
+    title:   "Value Area Fill",
+    default: "#9E9E9E26",
+    group:   "Colours: Previous",
+  },
 
-  // Colours — Previous
-  c_pvwap: input("Prev VWAP", "color", "#9E9E9EB3", { group: "Colours: Previous" }),
-  c_pvah: input("Prev VAH", "color", "#9E9E9EB3", { group: "Colours: Previous" }),
-  c_pval: input("Prev VAL", "color", "#9E9E9EB3", { group: "Colours: Previous" }),
-  c_fill_prv: input("Value Area Fill", "color", "#9E9E9E26", { group: "Colours: Previous" }),
-
-  // Colours — Labels
-  c_lbl_d_bg: input("Dev Label BG", "color", "#2196F3E6", { group: "Colours: Labels" }),
-  c_lbl_d_tx: input("Dev Label Text", "color", "#FFFFFF", { group: "Colours: Labels" }),
-  c_lbl_p_bg: input("Prev Label BG", "color", "#9E9E9EE6", { group: "Colours: Labels" }),
-  c_lbl_p_tx: input("Prev Label Text", "color", "#FFFFFF", { group: "Colours: Labels" }),
+  // ── Colours: Labels ─────────────────────────────────────────────────────────
+  c_lbl_d_bg: {
+    type:    "color",
+    title:   "Dev Label BG",
+    default: "#2196F3E6",
+    group:   "Colours: Labels",
+  },
+  c_lbl_d_tx: {
+    type:    "color",
+    title:   "Dev Label Text",
+    default: "#FFFFFF",
+    group:   "Colours: Labels",
+  },
+  c_lbl_p_bg: {
+    type:    "color",
+    title:   "Prev Label BG",
+    default: "#9E9E9EE6",
+    group:   "Colours: Labels",
+  },
+  c_lbl_p_tx: {
+    type:    "color",
+    title:   "Prev Label Text",
+    default: "#FFFFFF",
+    group:   "Colours: Labels",
+  },
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
